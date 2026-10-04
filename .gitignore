@@ -6,6 +6,8 @@ logs/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+dist/
+build/
+*.egg-info/
 .idea/
 .vscode/
-```

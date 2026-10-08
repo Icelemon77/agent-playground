@@ -10,4 +10,5 @@ dist/
 build/
 *.egg-info/
 .idea/
-.vscode/scratch/
+.vscode/
+scratch/

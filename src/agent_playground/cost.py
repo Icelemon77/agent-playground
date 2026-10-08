@@ -6,7 +6,7 @@
 价格会变，改动时请同步更新这里和抓取日期。
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 USD_PER_MTOK: dict[str, dict[str, float]] = {
     "deepseek-flash": {"cache_hit": 0.003, "cache_miss": 0.15, "output": 0.6},
@@ -18,7 +18,7 @@ USD_TO_CNY = 7.2
 
 def is_peak_now() -> bool:
     """当前是否处于高峰时段（周末和节假日全为闲时）。"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if now.weekday() >= 5:
         return False
     return 1 <= now.hour < 4 or 6 <= now.hour < 10

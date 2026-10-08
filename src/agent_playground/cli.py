@@ -1,8 +1,8 @@
 """交互式命令行对话：多轮历史、上下文截断与会话统计。"""
 
 from agent_playground.config import Settings
-from agent_playground.llm_client import stream_chat
 from agent_playground.cost import estimate_cost_cny
+from agent_playground.llm_client import stream_chat
 
 SYSTEM_PROMPT = "你是 agent-playground 项目的助手，回答简洁准确，不确定时直说不确定。"
 MAX_TURNS = 10

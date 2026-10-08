@@ -37,43 +37,45 @@ def stream_chat(
     finish_reason: str | None = None
     started = time.perf_counter()
 
-    with httpx.Client(timeout=settings.request_timeout) as client:
-        with client.stream("POST", url, json=payload, headers=headers) as resp:
-            if resp.status_code != 200:
-                raise LLMCallError(
-                    f"大模型接口返回 HTTP {resp.status_code}",
-                    status_code=resp.status_code,
-                )
+    with (
+        httpx.Client(timeout=settings.request_timeout) as client,
+        client.stream("POST", url, json=payload, headers=headers) as resp,
+    ):
+        if resp.status_code != 200:
+            raise LLMCallError(
+                f"大模型接口返回 HTTP {resp.status_code}",
+                status_code=resp.status_code,
+            )
 
-            for line in resp.iter_lines():
-                if not line or not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
+        for line in resp.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            data = line[6:]
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
 
-                if chunk.get("usage"):
-                    usage = chunk["usage"]
+            if chunk.get("usage"):
+                usage = chunk["usage"]
 
-                for choice in chunk.get("choices", []):
-                    delta = choice.get("delta", {})
-                    if reason := choice.get("finish_reason"):
-                        finish_reason = reason
-                    if piece := delta.get("reasoning_content"):
-                        if thinking_first_at is None:
-                            thinking_first_at = time.perf_counter()
-                        reasoning_parts.append(piece)
-                        if show_reasoning:
-                            console.print(piece, end="", style="grey50")
-                    if piece := delta.get("content"):
-                        if answer_first_at is None:
-                            answer_first_at = time.perf_counter()
-                        answer_parts.append(piece)
-                        console.print(piece, end="")
+            for choice in chunk.get("choices", []):
+                delta = choice.get("delta", {})
+                if reason := choice.get("finish_reason"):
+                    finish_reason = reason
+                if piece := delta.get("reasoning_content"):
+                    if thinking_first_at is None:
+                        thinking_first_at = time.perf_counter()
+                    reasoning_parts.append(piece)
+                    if show_reasoning:
+                        console.print(piece, end="", style="grey50")
+                if piece := delta.get("content"):
+                    if answer_first_at is None:
+                        answer_first_at = time.perf_counter()
+                    answer_parts.append(piece)
+                    console.print(piece, end="")
 
     elapsed = time.perf_counter() - started
     return {

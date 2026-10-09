@@ -5,12 +5,16 @@
 
 import json
 import sys
-
+import logging
+import time
 import httpx
 
 from agent_playground.config import Settings
 from agent_playground.tools import dispatch, get_tool_schemas
 from agent_playground.prompts import TOOL_PROMPT
+from agent_playground.logging_config import setup_logging
+
+logger = logging.getLogger("agent_playground.agent")
 
 
 def post_chat(messages: list[dict], settings: Settings) -> dict:
@@ -54,15 +58,23 @@ def run_agent(user_input: str, settings: Settings) -> str:
         for call in msg["tool_calls"]:
             name = call["function"]["name"]
             raw_args = call["function"]["arguments"]
-            print(f"[tool] 调用 {name}  参数={raw_args}")
+
+            started = time.perf_counter()
             result = dispatch(name, raw_args)
-            print(f"[tool] 结果 {result}")
+            elapsed = time.perf_counter() - started
+
+            logger.info(
+                "tool_call name=%s duration=%.3fs args=%s result=%s",
+                name,
+                elapsed,
+                raw_args,
+                result[:200],
+            )
+            # 屏幕上仍然打印，方便交互时观察
+            print(f"[tool] {name}  {raw_args}  {elapsed:.3f}s  → {result[:100]}")
+
             messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call["id"],
-                    "content": result,
-                }
+                {"role": "tool", "tool_call_id": call["id"], "content": result}
             )
 
     return f"达到最大步数 {MAX_STEPS}，任务未完成"
@@ -71,6 +83,7 @@ def run_agent(user_input: str, settings: Settings) -> str:
 
 def main() -> int:
     settings = Settings()
+    setup_logging(settings.log_level)
     question = sys.argv[1] if len(sys.argv) > 1 else "3 的 15 次方是多少？"
     print(f"问题：{question}")
     answer = run_agent(question, settings)

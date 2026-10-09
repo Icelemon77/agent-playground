@@ -79,9 +79,12 @@ src/agent_playground/
 ├── config.py          配置加载与校验（Pydantic Settings）
 ├── logging_config.py  控制台 + JSONL 双格式日志
 ├── errors.py          异常体系（LLMCallError 携带 status_code）
+├── prompts.py         系统提示词（集中管理，避免多个入口不一致）
 ├── llm_client.py      LLM 客户端：流式调用，返回回答/思考/用量/耗时
 ├── cost.py            token 成本估算（含高峰时段判断）
 ├── text_utils.py      文本处理小工具
+├── tools.py           工具注册表：@tool 装饰器 + Pydantic 校验 + 错误回传
+├── agent.py           工具调用循环（Function Calling）
 ├── cli.py             交互式命令行对话
 └── main.py            启动链路自检入口
 ```
@@ -106,6 +109,32 @@ uv run pyright          # 类型检查
 **上下文管理**：模型本身没有记忆，每轮都要把完整历史重新发过去。
 `cli.py` 只保留最近 `MAX_TURNS` 轮，避免 token 成本随轮数无限制增长
 （实测：第 1 轮输入 54 tokens，20 轮后涨到 1285 tokens）。
+
+**工具调用**：模型不执行任何函数，它只输出「调用哪个工具、传什么参数」，
+真正执行的是本项目的代码。完整链路是「模型请求调用 → 代码执行 → 结果回传 → 模型生成答案」，
+最多循环 `MAX_STEPS` 步，因此支持连续调用多个工具。
+工具执行失败时，错误会被转换成字符串回传给模型（而不是抛异常让程序崩溃），
+由模型决定重试或向用户说明。
+
+## 支持的工具
+
+模型可以调用以下工具（定义见 `src/agent_playground/tools.py`）：
+
+| 工具 | 参数 | 说明 |
+|---|---|---|
+| `calculator` | `expression` | 计算数学表达式 |
+| `get_current_time` | `timezone` | 获取指定时区的当前时间 |
+| `read_file` | `filename` | 读取 `data/` 目录下的文本文件（限制在该目录内） |
+| `list_files` | 无 | 列出 `data/` 目录下的文件名 |
+
+### 运行 Agent
+
+```bash
+uv run python -m agent_playground.agent "读取 data/numbers.txt，然后把里面所有数字相加"
+```
+
+Agent 会在需要时自动调用工具，并且可以**连续调用多个工具**完成任务。
+工具执行失败时，程序不会崩溃——错误会被回传给模型，由模型决定重试或向用户说明。
 
 ## 已知限制
 

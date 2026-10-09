@@ -10,7 +10,8 @@ import sys
 import time
 
 import httpx
-
+import json
+from agent_playground.trace import Tracer
 from agent_playground.config import Settings
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import REACT_PROMPT
@@ -76,72 +77,122 @@ def run_react(user_input: str, settings: Settings) -> str:
         },
         {"role": "user", "content": user_input},
     ]
+
+    tracer = Tracer("logs", user_input, settings.llm_model, MAX_STEPS)
     total_prompt = 0
     total_completion = 0
+    started_all = time.perf_counter()
 
-    for step in range(1, MAX_STEPS + 1):
-        text, usage = chat(messages, settings)
-        total_prompt += usage.get("prompt_tokens", 0)
-        total_completion += usage.get("completion_tokens", 0)
-        print(f"\n--- step {step} ---")
-        print(text.strip())
+    try:
+        for step in range(1, MAX_STEPS + 1):
+            text, usage = chat(messages, settings)
+            total_prompt += usage.get("prompt_tokens", 0)
+            total_completion += usage.get("completion_tokens", 0)
 
-        # 防御：模型可能自己编造 Observation，截断后再入历史
-        if "Observation:" in text:
-            logger.warning("hallucinated_observation step=%d", step)
-            print("[warn] 模型自己编造了 Observation，已截断")
-            text = text.split("Observation:", 1)[0].rstrip()
+            print(f"\n--- step {step} ---")
+            print(text.strip())
 
-        parsed = parse_response(text)
+            # 防御：模型可能自己编造 Observation，截断后再入历史
+            if "Observation:" in text:
+                logger.warning("hallucinated_observation step=%d", step)
+                print("[warn] 模型自己编造了 Observation，已截断")
+                text = text.split("Observation:", 1)[0].rstrip()
 
-        if parsed is None:
-            print("[warn] 格式解析失败，要求模型重试")
-            logger.warning("parse_failed step=%d text=%s", step, text[:200])
-            messages.append({"role": "assistant", "content": text})
-            messages.append(
+            parsed = parse_response(text)
+
+            if parsed is None:
+                print("[warn] 格式解析失败，要求模型重试")
+                logger.warning("parse_failed step=%d", step)
+                tracer.write({"type": "parse_error", "step": step, "raw": text})
+                messages.append({"role": "assistant", "content": text})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "格式错误：请只输出 Thought/Action/Action Input，"
+                            "或 Thought/Final Answer，不要输出其他内容。"
+                        ),
+                    }
+                )
+                continue
+
+            kind, value, args = parsed
+
+            if kind == "final":
+                elapsed_all = time.perf_counter() - started_all
+                tracer.write(
+                    {
+                        "type": "final",
+                        "step": step,
+                        "answer": value,
+                        "total_prompt_tokens": total_prompt,
+                        "total_completion_tokens": total_completion,
+                        "elapsed_s": elapsed_all,
+                    }
+                )
+                logger.info(
+                    "react_final step=%d prompt_tokens=%d completion_tokens=%d answer=%s",
+                    step,
+                    total_prompt,
+                    total_completion,
+                    value[:200],
+                )
+                print(
+                    f"\n[汇总] {step} 步 · 输入 {total_prompt} tokens · "
+                    f"输出 {total_completion} tokens · {elapsed_all:.2f}s"
+                )
+                return value
+
+            started = time.perf_counter()
+            observation = dispatch(value, args)
+            elapsed = time.perf_counter() - started
+
+            print(f"[observation] {observation}")
+            tracer.write(
                 {
-                    "role": "user",
-                    "content": (
-                        "格式错误：请只输出 Thought/Action/Action Input，"
-                        "或 Thought/Final Answer，不要输出其他内容。"
-                    ),
+                    "type": "step",
+                    "step": step,
+                    "thought": extract_thought(text),
+                    "action": value,
+                    "action_input": safe_json(args),
+                    "observation": observation,
+                    "duration_s": elapsed,
+                    "usage": usage,
                 }
             )
-            continue
-
-        kind, value, args = parsed
-
-        if kind == "final":
             logger.info(
-                "react_final step=%d prompt_tokens=%d completion_tokens=%d answer=%s",
+                "react_action step=%d tool=%s args=%s duration=%.3fs",
                 step,
-                total_prompt,
-                total_completion,
-                value[:200],
+                value,
+                args,
+                elapsed,
             )
-            print(
-                f"\n[汇总] {step} 步，输入 {total_prompt} tokens，输出 {total_completion} tokens"
-            )
-            return value
 
-        started = time.perf_counter()
-        observation = dispatch(value, args)
-        elapsed = time.perf_counter() - started
+            messages.append({"role": "assistant", "content": text})
+            messages.append({"role": "user", "content": f"Observation: {observation}"})
 
-        print(f"[observation] {observation}")
-        logger.info(
-            "react_action step=%d tool=%s args=%s duration=%.3fs",
-            step,
-            value,
-            args,
-            elapsed,
-        )
+        tracer.write({"type": "max_steps", "steps": MAX_STEPS})
+        logger.warning("react_max_steps steps=%d", MAX_STEPS)
+        return f"达到最大步数 {MAX_STEPS}，任务未完成"
 
-        messages.append({"role": "assistant", "content": text})
-        messages.append({"role": "user", "content": f"Observation: {observation}"})
+    finally:
+        tracer.close()
 
-    logger.warning("react_max_steps steps=%d", MAX_STEPS)
-    return f"达到最大步数 {MAX_STEPS}，任务未完成"
+
+def extract_thought(text: str) -> str:
+    """从模型输出里取出 Thought 的内容。"""
+    match = re.search(
+        r"Thought:\s*(.+?)(?=\n\s*(?:Action|Final Answer):|$)", text, re.DOTALL
+    )
+    return match.group(1).strip() if match else ""
+
+
+def safe_json(raw: str) -> object:
+    """能解析就返回对象，否则原样返回——保证 trace 不会因为脏数据写不进去。"""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
 
 
 def main() -> int:

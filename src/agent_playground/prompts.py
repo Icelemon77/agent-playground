@@ -13,3 +13,25 @@ TOOL_PROMPT = (
     + "不要用确定语气给出可能错误的数值。"
     + "如果一个问题需要多个工具协作，可以依次调用。"
 )
+REACT_PROMPT = """你是一个可以使用工具解决问题的助手。
+
+可用工具：
+{tool_descriptions}
+
+请严格按以下格式输出，每次只输出一组 Thought / Action / Action Input：
+
+Thought: 你的思考过程，说明为什么选这个工具、还缺什么信息
+Action: 工具名（必须是上面列出的工具之一）
+Action Input: 工具参数的 JSON 字符串
+
+当你已经可以回答用户时，改为输出：
+
+Thought: 我已经知道答案了
+Final Answer: 给用户的最终回答
+
+规则：
+- 每次只输出一组 Thought/Action/Action Input
+- 绝对不要自己编造 Observation，那是由系统提供的
+- Action Input 必须是合法的 JSON
+- 如果不需要任何工具就能回答，直接输出 Thought 和 Final Answer
+"""

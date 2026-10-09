@@ -3,15 +3,16 @@
 from agent_playground.config import Settings
 from agent_playground.cost import estimate_cost_cny
 from agent_playground.llm_client import stream_chat
+from agent_playground.prompts import BASE_PROMPT
 
-SYSTEM_PROMPT = "你是 agent-playground 项目的助手，回答简洁准确，不确定时直说不确定。"
+
 MAX_TURNS = 10
 
 
 def build_messages(history: list[dict[str, str]]) -> list[dict[str, str]]:
     """拼出发给接口的 messages：system + 最近 MAX_TURNS 轮对话。"""
     recent = history[-(MAX_TURNS * 2) :]
-    return [{"role": "system", "content": SYSTEM_PROMPT}, *recent]
+    return [{"role": "system", "content": BASE_PROMPT}, *recent]
 
 
 def main() -> int:

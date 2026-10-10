@@ -9,11 +9,11 @@ import sys
 import time
 
 from agent_playground.config import Settings
+from agent_playground.context import compact_observation
 from agent_playground.llm_client import stream_chat
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import TOOL_PROMPT
 from agent_playground.tools import dispatch, get_tool_schemas
-from agent_playground.context import compact_observation
 
 logger = logging.getLogger("agent_playground.agent")
 

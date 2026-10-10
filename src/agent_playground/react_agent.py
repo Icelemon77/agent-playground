@@ -4,19 +4,20 @@
 与 agent.py 的区别：不走 tool_calls 协议，工具调用完全靠自己解析文本。
 """
 
+import json
 import logging
 import re
 import sys
 import time
 
 import httpx
-import json
-from agent_playground.trace import Tracer
+
 from agent_playground.config import Settings
+from agent_playground.context import compact_observation
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import REACT_PROMPT
 from agent_playground.tools import dispatch, get_tool_schemas
-from agent_playground.context import compact_observation
+from agent_playground.trace import Tracer
 
 logger = logging.getLogger("agent_playground.react")
 

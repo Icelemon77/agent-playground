@@ -5,7 +5,6 @@ from agent_playground.cost import estimate_cost_cny
 from agent_playground.llm_client import stream_chat
 from agent_playground.prompts import BASE_PROMPT
 
-
 MAX_TURNS = 10
 
 

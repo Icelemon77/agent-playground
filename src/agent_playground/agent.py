@@ -4,63 +4,80 @@
 """
 
 import json
-import sys
 import logging
+import sys
 import time
-import httpx
 
 from agent_playground.config import Settings
-from agent_playground.tools import dispatch, get_tool_schemas
-from agent_playground.prompts import TOOL_PROMPT
+from agent_playground.llm_client import stream_chat
 from agent_playground.logging_config import setup_logging
+from agent_playground.prompts import TOOL_PROMPT
+from agent_playground.tools import dispatch, get_tool_schemas
+from agent_playground.context import compact_observation
 
 logger = logging.getLogger("agent_playground.agent")
 
 
-def post_chat(messages: list[dict], settings: Settings) -> dict:
-    """发一次非流式请求，返回完整响应。"""
-    url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
-    payload = {
-        "model": settings.llm_model,
-        "messages": messages,
-        "tools": get_tool_schemas(),
-        "stream": False,
-    }
-    headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
-
-    with httpx.Client(timeout=settings.request_timeout) as client:
-        resp = client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        return resp.json()
-
-
-MAX_STEPS = 5
+MAX_STEPS = 6
 
 
 def run_agent(user_input: str, settings: Settings) -> str:
-    """回答一个问题，过程中可以多次调用工具。"""
+    """回答一个问题，过程中可以多次调用工具，回答实时流式输出。"""
     messages: list[dict] = [
-        {"role": "system", "content": TOOL_PROMPT},  # ← 加这一条，必须在第一位
+        {"role": "system", "content": TOOL_PROMPT},
         {"role": "user", "content": user_input},
     ]
 
-    for step in range(MAX_STEPS):
-        data = post_chat(messages, settings)
-        choice = data["choices"][0]
-        msg = choice["message"]
-        messages.append(msg)
+    total_prompt = 0
+    total_completion = 0
+    started_all = time.perf_counter()
 
-        # 终止条件：模型不再请求工具，说明它要给出答案了
-        if not msg.get("tool_calls"):
-            return msg.get("content") or "（模型返回了空内容）"
+    for step in range(1, MAX_STEPS + 1):
+        result = stream_chat(messages, settings, tools=get_tool_schemas())
+        usage = result["usage"]
+        total_prompt += usage.get("prompt_tokens", 0)
+        total_completion += usage.get("completion_tokens", 0)
+        calls = result["tool_calls"]
 
-        print(f"[step {step + 1}] 模型请求调用 {len(msg['tool_calls'])} 个工具")
-        for call in msg["tool_calls"]:
-            name = call["function"]["name"]
-            raw_args = call["function"]["arguments"]
+        # 没有工具调用 → 这就是最终答案
+        if not calls:
+            elapsed_all = time.perf_counter() - started_all
+            print(
+                f"\n[汇总] {step} 步 · 输入 {total_prompt} tokens · "
+                f"输出 {total_completion} tokens · {elapsed_all:.2f}s"
+            )
+            logger.info(
+                "agent_final step=%d prompt_tokens=%d completion_tokens=%d",
+                step,
+                total_prompt,
+                total_completion,
+            )
+            return result["answer"] or "（模型返回了空内容）"
 
+        # ★ 重构 assistant 消息：流式下没有现成的 message 对象，必须自己拼
+        messages.append(
+            {
+                "role": "assistant",
+                "content": result["answer"] or None,
+                "tool_calls": [
+                    {
+                        "id": c["id"],
+                        "type": "function",
+                        "function": {"name": c["name"], "arguments": c["arguments"]},
+                    }
+                    for c in calls
+                ],
+            }
+        )
+
+        print()  # 工具调用前换行，避免和流式文本黏在一起
+
+        for c in calls:
+            name = c["name"]
+            raw_args = c["arguments"]
             started = time.perf_counter()
-            result = dispatch(name, raw_args)
+            args = json.loads(raw_args)  # ← 现在才是解析的时机
+            result_text = dispatch(name, raw_args)
             elapsed = time.perf_counter() - started
 
             logger.info(
@@ -68,13 +85,13 @@ def run_agent(user_input: str, settings: Settings) -> str:
                 name,
                 elapsed,
                 raw_args,
-                result[:200],
+                result_text[:200],
             )
-            # 屏幕上仍然打印，方便交互时观察
-            print(f"[tool] {name}  {raw_args}  {elapsed:.3f}s  → {result[:100]}")
+            print(f"[tool] {name}  {args}  {elapsed:.3f}s  → {result_text[:100]}")
 
+            compacted = compact_observation(result_text)
             messages.append(
-                {"role": "tool", "tool_call_id": call["id"], "content": result}
+                {"role": "tool", "tool_call_id": c["id"], "content": compacted}
             )
 
     return f"达到最大步数 {MAX_STEPS}，任务未完成"
@@ -86,8 +103,8 @@ def main() -> int:
     setup_logging(settings.log_level)
     question = sys.argv[1] if len(sys.argv) > 1 else "3 的 15 次方是多少？"
     print(f"问题：{question}")
-    answer = run_agent(question, settings)
-    print(f"\n回答：{answer}")
+    run_agent(question, settings)  # 内容已经在流式过程中打印过了
+    print()  # 只补一个结尾换行
     return 0
 
 

@@ -16,6 +16,7 @@ def stream_chat(
     messages: list[dict[str, str]],
     settings: Settings,
     *,
+    tools: list[dict] | None = None,
     show_reasoning: bool = False,
 ) -> dict:
     """流式调用 chat/completions，边收边打印，返回本次调用的统计信息。"""
@@ -25,8 +26,10 @@ def stream_chat(
         "messages": messages,
         "stream": True,
         "stream_options": {"include_usage": True},
-        # "reasoning_effort": "none",
+        "reasoning_effort": "none",
     }
+    if tools:  # ← 新增
+        payload["tools"] = tools
     headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
 
     usage: dict = {}
@@ -36,6 +39,7 @@ def stream_chat(
     answer_first_at: float | None = None
     finish_reason: str | None = None
     started = time.perf_counter()
+    tool_calls_acc: dict[int, dict[str, str]] = {}
 
     with (
         httpx.Client(timeout=settings.request_timeout) as client,
@@ -76,11 +80,25 @@ def stream_chat(
                         answer_first_at = time.perf_counter()
                     answer_parts.append(piece)
                     console.print(piece, end="")
+                # 累积流式工具调用碎片：按 index 分组，arguments 是字符串拼接
+                for tc in delta.get("tool_calls") or []:
+                    idx = tc["index"]
+                    slot = tool_calls_acc.setdefault(
+                        idx, {"id": "", "name": "", "arguments": ""}
+                    )
+                    if tc.get("id"):
+                        slot["id"] = tc["id"]
+                    fn = tc.get("function") or {}
+                    if fn.get("name"):
+                        slot["name"] += fn["name"]
+                    if fn.get("arguments"):
+                        slot["arguments"] += fn["arguments"]
 
     elapsed = time.perf_counter() - started
     return {
         "answer": "".join(answer_parts),
         "reasoning": "".join(reasoning_parts),
+        "tool_calls": [tool_calls_acc[i] for i in sorted(tool_calls_acc)],
         "usage": usage,
         "finish_reason": finish_reason,
         "think_ttft": (thinking_first_at - started) if thinking_first_at else 0.0,

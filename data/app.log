@@ -1,0 +1,52 @@
+2026-10-09 09:15:01 INFO  [main] 应用启动 version=0.2.0 env=prod
+2026-10-09 09:15:02 INFO  [config] 加载配置项 12 个 source=.env
+2026-10-09 09:15:02 INFO  [db] 连接池初始化 size=10
+2026-10-09 09:15:03 INFO  [api] 注册路由 24 条
+2026-10-09 09:16:11 INFO  [api] GET /users/1001 200 42ms
+2026-10-09 09:16:13 ERROR [db] 连接超时 host=db-primary timeout=5s retry=1
+2026-10-09 09:16:14 WARN  [db] 连接池使用率 85% size=10 in_use=9
+2026-10-09 09:16:18 ERROR [db] 连接超时 host=db-primary timeout=5s retry=2
+2026-10-09 09:16:19 ERROR [db] 连接失败 host=db-primary 放弃重试
+2026-10-09 09:16:19 ERROR [api] GET /users/1001 500 5231ms
+2026-10-09 09:16:25 WARN  [db] 连接池使用率 90% size=10 in_use=10
+2026-10-09 09:17:02 INFO  [db] 连接恢复正常 host=db-primary
+2026-10-09 09:17:03 INFO  [api] GET /orders/2001 200 38ms
+2026-10-09 09:17:11 INFO  [api] POST /orders 201 121ms
+2026-10-09 09:18:44 WARN  [cache] 缓存命中率偏低 32% 期望>=70%
+2026-10-09 09:19:02 ERROR [auth] token 校验失败 user=1002 reason=expired
+2026-10-09 09:19:03 INFO  [api] POST /login 401 12ms
+2026-10-09 09:20:15 INFO  [api] GET /products 200 88ms
+2026-10-09 09:21:30 WARN  [db] 慢查询 2.3s sql=SELECT * FROM orders WHERE status=?
+2026-10-09 09:22:09 ERROR [auth] token 校验失败 user=1003 reason=invalid_signature
+2026-10-09 09:22:10 INFO  [api] POST /login 401 11ms
+2026-10-09 09:23:41 ERROR [auth] token 校验失败 user=1004 reason=expired
+2026-10-09 09:24:02 INFO  [api] GET /health 200 2ms
+2026-10-09 09:25:18 WARN  [db] 慢查询 1.8s sql=SELECT count(*) FROM events
+2026-10-09 09:26:33 ERROR [db] 连接超时 host=db-replica timeout=5s retry=1
+2026-10-09 09:26:35 ERROR [db] 连接失败 host=db-replica 放弃重试
+2026-10-09 09:26:36 ERROR [api] GET /stats 500 5011ms
+2026-10-09 09:27:10 WARN  [cache] 缓存命中率偏低 28% 期望>=70%
+2026-10-09 09:28:44 INFO  [api] GET /users/1005 200 45ms
+2026-10-09 09:30:02 ERROR [auth] token 校验失败 user=1006 reason=expired
+2026-10-09 09:31:19 WARN  [db] 慢查询 3.1s sql=SELECT * FROM events WHERE ts>?
+2026-10-09 09:32:55 ERROR [db] 连接超时 host=db-primary timeout=5s retry=1
+2026-10-09 09:32:57 ERROR [db] 连接失败 host=db-primary 放弃重试
+2026-10-09 09:32:58 ERROR [api] POST /orders 500 5008ms
+2026-10-09 09:34:12 WARN  [cache] 缓存命中率偏低 30% 期望>=70%
+2026-10-09 09:35:40 INFO  [api] GET /products/3001 200 51ms
+2026-10-09 09:37:21 ERROR [auth] token 校验失败 user=1007 reason=invalid_signature
+2026-10-09 09:38:44 WARN  [db] 慢查询 2.7s sql=SELECT * FROM users WHERE email=?
+2026-10-09 09:40:02 INFO  [api] GET /health 200 2ms
+2026-10-09 09:41:33 ERROR [db] 连接超时 host=db-replica timeout=5s retry=1
+2026-10-09 09:41:35 ERROR [db] 连接失败 host=db-replica 放弃重试
+2026-10-09 09:41:36 ERROR [api] GET /stats 500 5004ms
+2026-10-09 09:43:09 WARN  [cache] 缓存命中率偏低 26% 期望>=70%
+2026-10-09 09:45:22 INFO  [api] GET /users/1008 200 39ms
+2026-10-09 09:47:41 ERROR [auth] token 校验失败 user=1009 reason=expired
+2026-10-09 09:49:03 WARN  [db] 慢查询 2.1s sql=SELECT * FROM orders WHERE user_id=?
+2026-10-09 09:51:18 ERROR [db] 连接超时 host=db-primary timeout=5s retry=1
+2026-10-09 09:51:20 ERROR [db] 连接失败 host=db-primary 放弃重试
+2026-10-09 09:51:21 ERROR [api] POST /orders 500 5012ms
+2026-10-09 09:53:44 WARN  [cache] 缓存命中率偏低 31% 期望>=70%
+2026-10-09 09:55:10 INFO  [api] GET /health 200 2ms
+2026-10-09 09:56:33 ERROR [api] 未捕获异常 endpoint=/reports detail=KeyError: 'total'

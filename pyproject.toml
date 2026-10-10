@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "rich>=15.0.0",
+    "tzdata>=2026.5",
 ]
 
 [project.scripts]

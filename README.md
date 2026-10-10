@@ -136,6 +136,44 @@ uv run python -m agent_playground.agent "读取 data/numbers.txt，然后把里�
 Agent 会在需要时自动调用工具，并且可以**连续调用多个工具**完成任务。
 工具执行失败时，程序不会崩溃——错误会被回传给模型，由模型决定重试或向用户说明。
 
+## 两种 Agent 实现
+
+项目里有两条 Agent 实现路线，用于对比学习：
+
+| 入口 | 范式 | 工具调用方式 |
+|---|---|---|
+| `agent.py` | 原生 Function Calling | 通过 `tools` 参数，走 API 的 `tool_calls` 协议 |
+| `react_agent.py` | 文本式 ReAct | 靠 prompt 约定格式，自己用正则解析 |
+
+```bash
+# 同一个问题，两种实现各跑一遍
+uv run python -m agent_playground.agent "读取 data/app.log，总结里面出现了哪些问题类型"
+uv run python -m agent_playground.react_agent "读取 data/app.log，总结里面出现了哪些问题类型"
+```
+
+运行后会生成 `logs/trace_*.jsonl`，可以回放完整的推理过程：
+
+```bash
+uv run python -m agent_playground.replay logs\trace_20261010_153000.jsonl
+```
+
+### 实测对比（deepseek-flash，关闭思考模式）
+
+| 问题 | 实现 | 步数 | 输入 token | 输出 token | 耗时 | 成本 |
+|---|---|---|---|---|---|---|
+| 幂运算 | function calling | 2 | 1440 | 56 | 1.48s | ¥0.001797 |
+| 幂运算 | ReAct | 2 | 634 | 70 | 1.39s | ¥0.000987 |
+| 日志总结 | function calling | 2 | 2064 | 436 | 2.66s | ¥0.004113 |
+| 日志总结 | ReAct | 2 | 1254 | 375 | 2.86s | ¥0.002974 |
+
+**怎么选：**
+
+- 需要**并行调用多个工具** → function calling（ReAct 的文本格式一次只能输出一组 Action）
+- 需要看到模型的**推理过程**、需要人工审核断点 → ReAct
+- **工具很多** → function calling（结构化协议更可靠，不会因格式漂移失败）
+
+详细分析和踩坑记录见 [`docs/agent_notes.md`](docs/agent_notes.md)。
+
 ## 已知限制
 
 - 历史截断策略是「丢弃最早的」，没有做摘要压缩

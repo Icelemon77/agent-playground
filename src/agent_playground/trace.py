@@ -9,6 +9,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 
 class Tracer:
@@ -19,13 +22,13 @@ class Tracer:
     ) -> None:
         directory = Path(log_dir)
         directory.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = datetime.now(tz=LOCAL_TZ).strftime("%Y%m%d_%H%M%S")
         self.path = directory / f"trace_{stamp}.jsonl"
         self._fh = self.path.open("w", encoding="utf-8")
         self.write(
             {
                 "type": "start",
-                "time": datetime.now().isoformat(timespec="seconds"),
+                "time": datetime.now(tz=LOCAL_TZ).isoformat(timespec="seconds"),
                 "question": question,
                 "model": model,
                 "max_steps": max_steps,

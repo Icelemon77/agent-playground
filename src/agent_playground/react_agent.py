@@ -16,6 +16,7 @@ from agent_playground.config import Settings
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import REACT_PROMPT
 from agent_playground.tools import dispatch, get_tool_schemas
+from agent_playground.context import compact_observation
 
 logger = logging.getLogger("agent_playground.react")
 
@@ -200,51 +201,6 @@ MAX_OBSERVATION_CHARS = 800
 
 
 LOG_LEVEL_KEYWORDS = ("ERROR", "WARN", "Exception", "失败", "超时")
-
-
-def compact_log(text: str, max_lines: int = 20) -> str:
-    """日志类内容：优先保留有问题的行，正常行只留少量。
-
-    日志里的信息密度和「级别」强相关——
-    INFO 行大多是正常的，ERROR/WARN 才是值得分析的部分。
-    """
-    lines = text.splitlines()
-    if len(lines) <= max_lines:
-        return text
-
-    important = [ln for ln in lines if any(k in ln for k in LOG_LEVEL_KEYWORDS)]
-    normal = [ln for ln in lines if ln not in important]
-
-    # 有问题的行优先，剩余额度给正常行（各取头部，保持时间顺序）
-    keep = important[: max_lines - 3]
-    remaining = max_lines - len(keep)
-    keep += normal[:remaining]
-
-    # 按原文件顺序输出，保持时间线可读
-    kept = [ln for ln in lines if ln in keep]
-    omitted = len(lines) - len(kept)
-    return "\n".join(kept) + f"\n\n...（省略 {omitted} 行正常日志）..."
-
-
-def compact_head_tail(text: str, max_chars: int = MAX_OBSERVATION_CHARS) -> str:
-    """通用策略：截断中间，保留头尾。
-
-    适合文章、代码这类「开头是背景、结尾是结论」的内容。
-    """
-    if len(text) <= max_chars:
-        return text
-
-    half = max_chars // 2
-    omitted = len(text) - max_chars
-    return f"{text[:half]}\n\n...（中间省略 {omitted} 字符）...\n\n{text[-half:]}"
-
-
-def compact_observation(text: str) -> str:
-    """按内容类型选择压缩策略。"""
-    looks_like_log = text.count("\n") > 20 and ("ERROR" in text or "WARN" in text)
-    if looks_like_log:
-        return compact_log(text)
-    return compact_head_tail(text)
 
 
 def main() -> int:

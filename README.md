@@ -77,14 +77,19 @@ AI > 你好，lemon！很高兴认识你，大三同学。有什么我可以帮�
 ```
 src/agent_playground/
 ├── config.py          配置加载与校验（Pydantic Settings）
-├── logging_config.py  控制台 + JSONL 双格式日志
 ├── errors.py          异常体系（LLMCallError 携带 status_code）
-├── prompts.py         系统提示词（集中管理，避免多个入口不一致）
-├── llm_client.py      LLM 客户端：流式调用，返回回答/思考/用量/耗时
+├── logging_config.py  控制台 + JSONL 双格式日志
 ├── cost.py            token 成本估算（含高峰时段判断）
 ├── text_utils.py      文本处理小工具
-├── tools.py           工具注册表：@tool 装饰器 + Pydantic 校验 + 错误回传
-├── agent.py           工具调用循环（Function Calling）
+├── prompts.py         系统提示词（集中管理，避免多个入口不一致）
+├── context.py         上下文压缩（按内容类型选择策略）
+├── tools.py           工具注册表：@tool 装饰器 + 同步/异步分发
+├── llm_client.py      LLM 客户端：同步流式 + 异步 achat + 重试
+├── agent.py           Agent 主循环：同步流式 + 异步并发（arun_agent）
+├── react_agent.py     文本式 ReAct Agent（另一条实现路线）
+├── trace.py           每次运行的独立记录
+├── replay.py          trace 回放
+├── batch.py           批量并发任务
 ├── cli.py             交互式命令行对话
 └── main.py            启动链路自检入口
 ```
@@ -174,14 +179,41 @@ uv run python -m agent_playground.replay logs\trace_20261010_153000.jsonl
 
 详细分析和踩坑记录见 [`docs/agent_notes.md`](docs/agent_notes.md)。
 
+## 异步与并发
+
+批量任务支持并发执行。实测（5 个 Agent 任务，每个含工具调用）：
+
+| 并发上限 | 串行 | 并发 | 加速 |
+|---|---|---|---|
+| 3 | 7.87s | 3.52s | **2.2x** |
+| 5 | 8.25s | **2.02s** | **4.1x** |
+
+```bash
+uv run python -m agent_playground.batch 5
+```
+
+**token 消耗不变**（差异 < 1%）——并发只压缩时间，不减少工作量。
+
+设计要点：
+
+- **工具按同步/异步分流**：`async def` 工具直接 `await`，同步工具用 `asyncio.to_thread` 包装，
+  避免阻塞事件循环（漏掉包装会让并发静默失效，实测 1.00s 变 3.00s）
+- **客户端全程复用**：`httpx.AsyncClient` 初始化要同步加载 CA 证书，每次约 135ms，
+  6 个任务各自创建会白付 900ms
+- **单个任务失败被隔离**：失败返回带 `error` 字段的结果，不影响批次其他任务
+- **可恢复的错误自动重试**：指数退避 0.5s → 1s → 2s，4xx 立刻放弃
+- **`Semaphore` 限制并发数**，`asyncio.wait_for` 控制单请求总时限
+
+详细分析、六组实测数据和踩坑记录见 [`docs/async_notes.md`](docs/async_notes.md)。
+
 ## 已知限制
 
 - 历史截断策略是「丢弃最早的」，没有做摘要压缩
-- 只有串行单轮对话，没有并发请求
-- 没有重试与限流处理（`errors.py` 已预留 `status_code` 供上层判断）
+- 重试只覆盖网络层异常和 429/5xx，没有熔断与降级策略
+- 并发上限需要手动指定，没有根据服务端限流自适应调整
 - 成本估算基于 2026-10-08 抓取的价格，且未处理中国法定节假日
 - 没有单元测试
 
 ## 下一步
 
-- Day 3：Function Calling / Tool Use
+- Day 6：测试与 trace 回放

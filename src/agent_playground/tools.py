@@ -4,6 +4,8 @@
 两者不会再不同步；JSON Schema 由 Pydantic 模型自动生成，无需手写。
 """
 
+import asyncio
+import inspect
 import json
 import logging
 from collections.abc import Callable
@@ -188,3 +190,43 @@ def list_files() -> str:
     if not names:
         return "（data/ 目录为空）"
     return "、".join(names)
+
+
+async def adispatch(name: str, raw_args: str) -> str:
+    """异步版的工具分发：支持同步工具和异步工具共存。"""
+    if name not in _REGISTRY:
+        return f"错误：不存在名为 {name} 的工具。可用工具：{list(_REGISTRY)}"
+
+    fn, params_model = _REGISTRY[name]
+
+    try:
+        args = json.loads(raw_args)
+    except json.JSONDecodeError as exc:
+        return f"错误：参数不是合法的 JSON（{exc}）。请检查格式后重试。"
+
+    try:
+        validated = params_model(**args).model_dump()
+    except ValidationError as exc:
+        return f"错误：参数校验未通过。{exc.errors()}"
+
+    try:
+        if inspect.iscoroutinefunction(fn):
+            return await fn(**validated)  # 异步工具直接 await
+        return await asyncio.to_thread(fn, **validated)  # 同步工具丢到线程池
+    except Exception as exc:
+        logger.exception("tool_internal_error name=%s", name)
+        return f"错误：工具执行失败（{type(exc).__name__}: {exc}）"
+
+
+class WeatherArgs(BaseModel):
+    city: str = Field(min_length=1, max_length=50, description="城市名，例如 '北京'")
+
+
+@tool(
+    description="查询指定城市的天气。当用户询问天气时使用。",
+    params=WeatherArgs,
+)
+async def fetch_weather(city: str) -> str:
+    """模拟一个慢速 API 调用。"""
+    await asyncio.sleep(1.5)  # 模拟网络延迟
+    return f"{city} 今天晴，22-28 度"

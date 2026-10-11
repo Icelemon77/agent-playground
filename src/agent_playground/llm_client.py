@@ -28,7 +28,7 @@ def stream_chat(
         "stream_options": {"include_usage": True},
         "reasoning_effort": "none",
     }
-    if tools:  # ← 新增
+    if tools:
         payload["tools"] = tools
     headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
 
@@ -111,29 +111,46 @@ async def achat(
     messages: list[dict],
     settings: Settings,
     *,
+    tools: list[dict] | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> dict:
-    """异步调用（非流式），返回 {answer, usage}。"""
+    """异步调用（非流式）。
+
+    返回 {answer, tool_calls, usage}。
+    tool_calls 已归一化成 [{id, name, arguments}]，可直接喂给 adispatch。
+    """
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
-    owns_client = client is None  # ← 新增
-    if client is None:  # ← 新增
-        client = httpx.AsyncClient(timeout=settings.request_timeout)
     payload = {
         "model": settings.llm_model,
         "messages": messages,
         "stream": False,
         "reasoning_effort": "none",
     }
+    if tools:
+        payload["tools"] = tools
     headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
+
+    owns_client = client is None
+    if client is None:
+        client = httpx.AsyncClient(timeout=settings.request_timeout)
 
     try:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
+        message = data["choices"][0]["message"]
         return {
-            "answer": data["choices"][0]["message"]["content"],
+            "answer": message.get("content") or "",
+            "tool_calls": [
+                {
+                    "id": call["id"],
+                    "name": call["function"]["name"],
+                    "arguments": call["function"]["arguments"],
+                }
+                for call in (message.get("tool_calls") or [])
+            ],
             "usage": data.get("usage", {}),
         }
-    finally:  # ← 新增
-        if owns_client:  # ← 新增
-            await client.aclose()  # ← 新增
+    finally:
+        if owns_client:
+            await client.aclose()

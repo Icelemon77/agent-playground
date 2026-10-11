@@ -3,17 +3,20 @@
 链路：模型请求调用工具 → 我们执行 → 回传结果 → 模型生成最终答案。
 """
 
+import asyncio
 import json
 import logging
 import sys
 import time
 
+import httpx
+
 from agent_playground.config import Settings
 from agent_playground.context import compact_observation
-from agent_playground.llm_client import stream_chat
+from agent_playground.llm_client import achat, stream_chat
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import TOOL_PROMPT
-from agent_playground.tools import dispatch, get_tool_schemas
+from agent_playground.tools import adispatch, dispatch, get_tool_schemas
 
 logger = logging.getLogger("agent_playground.agent")
 
@@ -106,6 +109,100 @@ def main() -> int:
     run_agent(question, settings)  # 内容已经在流式过程中打印过了
     print()  # 只补一个结尾换行
     return 0
+
+
+async def arun_agent(
+    user_input: str,
+    settings: Settings,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict:
+    """异步版 Agent 主循环：并发执行同一轮的多个工具。
+
+    返回 {answer, steps, prompt_tokens, completion_tokens, elapsed_s}。
+    """
+    messages: list[dict] = [
+        {"role": "system", "content": TOOL_PROMPT},
+        {"role": "user", "content": user_input},
+    ]
+    total_prompt = 0
+    total_completion = 0
+    started = time.perf_counter()
+    try:
+        for step in range(1, MAX_STEPS + 1):
+            result = await achat(
+                messages, settings, tools=get_tool_schemas(), client=client
+            )
+
+            usage = result["usage"]
+            total_prompt += usage.get("prompt_tokens", 0)
+            total_completion += usage.get("completion_tokens", 0)
+
+            calls = result["tool_calls"]
+
+            if not calls:
+                return {
+                    "answer": result["answer"],
+                    "steps": step,
+                    "prompt_tokens": total_prompt,
+                    "completion_tokens": total_completion,
+                    "elapsed_s": time.perf_counter() - started,
+                }
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": result["answer"] or None,
+                    "tool_calls": [
+                        {
+                            "id": c["id"],
+                            "type": "function",
+                            "function": {
+                                "name": c["name"],
+                                "arguments": c["arguments"],
+                            },
+                        }
+                        for c in calls
+                    ],
+                }
+            )
+
+            # 并发执行本轮的所有工具
+            observations = await asyncio.gather(
+                *(adispatch(c["name"], c["arguments"]) for c in calls)
+            )
+
+            for c, observation in zip(calls, observations, strict=True):
+                logger.info(
+                    "tool_call name=%s args=%s result=%s",
+                    c["name"],
+                    c["arguments"],
+                    observation[:200],
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": c["id"],
+                        "content": compact_observation(observation),
+                    }
+                )
+
+        return {
+            "answer": f"达到最大步数 {MAX_STEPS}，任务未完成",
+            "steps": MAX_STEPS,
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "elapsed_s": time.perf_counter() - started,
+        }
+    except httpx.HTTPError as exc:
+        logger.exception("agent_http_error input=%s", user_input[:80])
+        return {
+            "answer": f"（网络错误，任务未能完成：{type(exc).__name__}）",
+            "steps": 0,
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "elapsed_s": time.perf_counter() - started,
+        }
 
 
 if __name__ == "__main__":

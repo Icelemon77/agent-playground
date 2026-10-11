@@ -105,3 +105,35 @@ def stream_chat(
         "answer_ttft": (answer_first_at - started) if answer_first_at else 0.0,
         "elapsed": elapsed,
     }
+
+
+async def achat(
+    messages: list[dict],
+    settings: Settings,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict:
+    """异步调用（非流式），返回 {answer, usage}。"""
+    url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
+    owns_client = client is None  # ← 新增
+    if client is None:  # ← 新增
+        client = httpx.AsyncClient(timeout=settings.request_timeout)
+    payload = {
+        "model": settings.llm_model,
+        "messages": messages,
+        "stream": False,
+        "reasoning_effort": "none",
+    }
+    headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
+
+    try:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "answer": data["choices"][0]["message"]["content"],
+            "usage": data.get("usage", {}),
+        }
+    finally:  # ← 新增
+        if owns_client:  # ← 新增
+            await client.aclose()  # ← 新增

@@ -1,6 +1,8 @@
 """LLM 客户端：流式调用大模型接口，返回回答、思考、用量与耗时。"""
 
+import asyncio
 import json
+import logging
 import time
 
 import httpx
@@ -10,6 +12,7 @@ from agent_playground.config import Settings
 from agent_playground.errors import LLMCallError
 
 console = Console()
+logger = logging.getLogger("agent_playground.llm_client")
 
 
 def stream_chat(
@@ -154,3 +157,54 @@ async def achat(
     finally:
         if owns_client:
             await client.aclose()
+
+
+# 这些 HTTP 状态码代表「服务端临时问题」，值得重试
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+async def achat_with_retry(
+    messages: list[dict],
+    settings: Settings,
+    *,
+    tools: list[dict] | None = None,
+    client: httpx.AsyncClient | None = None,
+    max_attempts: int = 3,
+) -> dict:
+    """带重试的 achat。
+
+    只重试「可能恢复」的错误：
+      - 网络层异常（超时、断连、DNS）—— 通常抖动
+      - HTTP 429 / 5xx —— 限流或服务端故障
+    4xx（除了 429）立刻放弃——参数错了重试一万次也一样。
+    """
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await asyncio.wait_for(
+                achat(messages, settings, tools=tools, client=client),
+                timeout=settings.request_timeout,
+            )
+        except TimeoutError as exc:
+            last_error = exc
+        except httpx.TransportError as exc:
+            last_error = exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in RETRYABLE_STATUS:
+                raise  # 4xx：不重试，直接上抛
+            last_error = exc
+
+        if attempt < max_attempts:
+            wait = 0.5 * 2 ** (attempt - 1)  # 指数退避 0.5s → 1s → 2s
+            logger.warning(
+                "llm_retry attempt=%d/%d wait=%.1fs error=%s",
+                attempt,
+                max_attempts,
+                wait,
+                type(last_error).__name__,
+            )
+            await asyncio.sleep(wait)
+
+    logger.error("llm_retry_exhausted attempts=%d error=%s", max_attempts, last_error)
+    raise last_error if last_error else RuntimeError("重试全部失败")

@@ -23,6 +23,7 @@ QUESTIONS = [
     "data 目录下有哪些文件？",
     "读取 data/numbers.txt 并把里面的数字相加",
     "读取 data/app.log，用一句话总结主要问题",
+    "【故障注入】这个任务会失败",
 ]
 
 
@@ -31,7 +32,7 @@ async def run_serial(settings: Settings, client: httpx.AsyncClient) -> list[dict
     results: list[dict] = []
     for question in QUESTIONS:
         console.print(f"  [dim]→ {question}[/dim]")
-        results.append(await arun_agent(question, settings, client=client))
+        results.append(await run_one(question, settings, client))
     return results
 
 
@@ -45,22 +46,48 @@ async def run_concurrent(
 
     async def one(question: str) -> dict:
         async with semaphore:
-            return await arun_agent(question, settings, client=client)
+            return await run_one(question, settings, client)
 
     return list(await asyncio.gather(*(one(q) for q in QUESTIONS)))
 
 
 def summarize(label: str, results: list[dict], elapsed: float, model: str) -> dict:
+    ok = [r for r in results if r["error"] is None]
+    failed = [r for r in results if r["error"] is not None]
+
     total_in = sum(r["prompt_tokens"] for r in results)
     total_out = sum(r["completion_tokens"] for r in results)
     cost = estimate_cost_cny(
         model, {"prompt_tokens": total_in, "completion_tokens": total_out}
     )
+
     console.print(
         f"  [bold]{label}[/bold]  耗时 [cyan]{elapsed:6.2f}s[/cyan]  "
-        f"输入 {total_in:>5}  输出 {total_out:>4}  成本 ¥{cost:.6f}"
+        f"成功 {len(ok)}/{len(results)}  输入 {total_in:>5}  成本 ¥{cost:.6f}"
     )
-    return {"elapsed": elapsed, "in": total_in, "out": total_out, "cost": cost}
+    for r in failed:
+        console.print(f"    [red]✗ {r['error']}[/red]")
+
+    return {
+        "elapsed": elapsed,
+        "in": total_in,
+        "out": total_out,
+        "cost": cost,
+        "ok": len(ok),
+        "failed": len(failed),
+    }
+
+
+async def run_one(
+    question: str,
+    settings: Settings,
+    client: httpx.AsyncClient,
+) -> dict:
+    """跑一个任务。带 【故障注入】 前缀的会使用错误的模型名。"""
+    if question.startswith("【故障注入】"):
+        bad = settings.model_copy(update={"llm_model": "no-such-model-xyz"})
+        return await arun_agent(question, bad, client=client)
+    return await arun_agent(question, settings, client=client)
 
 
 async def main() -> int:

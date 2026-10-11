@@ -13,7 +13,7 @@ import httpx
 
 from agent_playground.config import Settings
 from agent_playground.context import compact_observation
-from agent_playground.llm_client import achat, stream_chat
+from agent_playground.llm_client import achat_with_retry, stream_chat
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import TOOL_PROMPT
 from agent_playground.tools import adispatch, dispatch, get_tool_schemas
@@ -130,7 +130,7 @@ async def arun_agent(
     started = time.perf_counter()
     try:
         for step in range(1, MAX_STEPS + 1):
-            result = await achat(
+            result = await achat_with_retry(
                 messages, settings, tools=get_tool_schemas(), client=client
             )
 
@@ -143,6 +143,7 @@ async def arun_agent(
             if not calls:
                 return {
                     "answer": result["answer"],
+                    "error": None,
                     "steps": step,
                     "prompt_tokens": total_prompt,
                     "completion_tokens": total_completion,
@@ -195,9 +196,15 @@ async def arun_agent(
             "elapsed_s": time.perf_counter() - started,
         }
     except httpx.HTTPError as exc:
-        logger.exception("agent_http_error input=%s", user_input[:80])
+        logger.warning(
+            "agent_http_error input=%s error=%s: %s",
+            user_input[:40],
+            type(exc).__name__,
+            str(exc)[:120],
+        )
         return {
             "answer": f"（网络错误，任务未能完成：{type(exc).__name__}）",
+            "error": type(exc).__name__,
             "steps": 0,
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,

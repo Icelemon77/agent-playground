@@ -92,6 +92,15 @@ src/agent_playground/
 ├── batch.py           批量并发任务
 ├── cli.py             交互式命令行对话
 └── main.py            启动链路自检入口
+
+tests/
+├── conftest.py        测试共享的假 client 与响应工厂
+├── test_tools.py      工具与分发
+├── test_text_utils.py 文本工具
+├── test_context.py    上下文压缩（含回归用例）
+├── test_cost.py       成本估算
+├── test_llm_client.py LLM 客户端（mock，不花 API 费用）
+└── test_agent.py      Agent 主循环
 ```
 
 ## 开发
@@ -100,6 +109,14 @@ src/agent_playground/
 uv run ruff format .    # 格式化
 uv run ruff check .     # 静态检查
 uv run pyright          # 类型检查
+uv run pytest           # 单元测试（76 个，约 0.6 秒）
+```
+
+测试全部使用假 client（见 `tests/conftest.py`），**不需要 API key、不产生任何费用**，
+而且能造出真实 API 造不出的场景（连续 500、7 次工具调用）。
+
+```bash
+uv run pytest --cov=src/agent_playground --cov-report=term-missing
 ```
 
 ## 实现说明
@@ -212,8 +229,10 @@ uv run python -m agent_playground.batch 5
 - 重试只覆盖网络层异常和 429/5xx，没有熔断与降级策略
 - 并发上限需要手动指定，没有根据服务端限流自适应调整
 - 成本估算基于 2026-10-08 抓取的价格，且未处理中国法定节假日
-- 没有单元测试
+- 测试只覆盖了纯逻辑（工具、压缩、成本）和 Agent 主循环，
+  `stream_chat` / `batch.py` / `cli.py` 这类入口尚未覆盖
+- `stream_chat` 内部自建 HTTP client，无法注入假对象——需要先重构才能测
 
 ## 下一步
 
-- Day 6：测试与 trace 回放
+- Day 7：项目一收尾（README 完善 + 代码整理 + 简历草稿）

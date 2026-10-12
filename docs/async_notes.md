@@ -130,8 +130,8 @@ counter += 1
 async def adispatch(name: str, raw_args: str) -> str:
     ...
     if inspect.iscoroutinefunction(fn):
-        return await fn(**validated)                  # 异步工具
-    return await asyncio.to_thread(fn, **validated)   # 同步工具（read_file 等）
+        return await fn(**validated)  # 异步工具
+    return await asyncio.to_thread(fn, **validated)  # 同步工具（read_file 等）
 ```
 
 ### 三个硬限制
@@ -263,7 +263,7 @@ limit=5，5 个任务 → 1 批 → Σ任务耗时 ÷ max任务耗时
 
 ```python
 async def bad_worker(name: str) -> str:
-    time.sleep(1.0)      # ❌ 不让出控制权
+    time.sleep(1.0)  # ❌ 不让出控制权
     return f"{name} 完成"
 ```
 

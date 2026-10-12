@@ -13,7 +13,7 @@ import httpx
 
 from agent_playground.config import Settings
 from agent_playground.context import compact_observation
-from agent_playground.llm_client import achat_with_retry, stream_chat
+from agent_playground.llm_client import ChatClient, achat_with_retry, stream_chat
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import TOOL_PROMPT
 from agent_playground.tools import adispatch, dispatch, get_tool_schemas
@@ -115,7 +115,7 @@ async def arun_agent(
     user_input: str,
     settings: Settings,
     *,
-    client: httpx.AsyncClient | None = None,
+    client: ChatClient | None = None,
 ) -> dict:
     """异步版 Agent 主循环：并发执行同一轮的多个工具。
 
@@ -190,6 +190,7 @@ async def arun_agent(
 
         return {
             "answer": f"达到最大步数 {MAX_STEPS}，任务未完成",
+            "error": "MaxStepsReached",
             "steps": MAX_STEPS,
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,

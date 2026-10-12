@@ -16,12 +16,17 @@ PEAK_MULTIPLIER = 2.0
 USD_TO_CNY = 7.2
 
 
-def is_peak_now() -> bool:
-    """当前是否处于高峰时段（周末和节假日全为闲时）。"""
-    now = datetime.now(UTC)
-    if now.weekday() >= 5:
+def is_peak_now(now: datetime | None = None) -> bool:
+    """是否处于高峰时段（周末和节假日全为闲时）。
+
+    now 参数只为可测试性而存在——不传就用当前时间。
+    如果把 datetime.now() 写死在函数里，测试就没法验证
+    「周六凌晨 2 点算不算高峰」这种问题。
+    """
+    moment = now or datetime.now(UTC)
+    if moment.weekday() >= 5:
         return False
-    return 1 <= now.hour < 4 or 6 <= now.hour < 10
+    return 1 <= moment.hour < 4 or 6 <= moment.hour < 10
 
 
 def estimate_cost_cny(model: str, usage: dict, *, is_peak: bool | None = None) -> float:

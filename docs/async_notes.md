@@ -216,10 +216,12 @@ async def adispatch(name: str, raw_args: str) -> str:
 
 | 运行 | 独立 client | 共享 client | 提升 |
 |---|---|---|---|
-| 第一次 | 1.84s | 0.88s | +51.8% |
-| 第二次 | 1.78s | 0.70s | +60.6% |
+| 第一次 | 1.84s | 0.88s | **约 +52%** |
+| 第二次 | 1.78s | 0.70s | **约 +61%** |
 
-**归因（本地实测）**：`httpx.AsyncClient()` 初始化会同步加载 CA 证书，每次约 **135ms**；6 次合计 **903ms**——与实测差异吻合。
+**归因（本地实测）**：`httpx.AsyncClient()` 初始化会同步加载 CA 证书。
+连续 20 次构造实测中位数 **149.6ms**（均值 154.2ms），每次约 **150ms**；
+6 次合计约 **900ms**——与实测的运行时间差异（0.96s / 1.08s）吻合。
 
 ### 表 3：工具并发（零 API 成本）
 
@@ -275,7 +277,7 @@ async def bad_worker(name: str) -> str:
 
 ```python
 async def achat(...):
-    async with httpx.AsyncClient(...) as client:   # ❌ 每次 135ms 阻塞
+    async with httpx.AsyncClient(...) as client:   # ❌ 每次约 150ms 阻塞
         ...
 ```
 

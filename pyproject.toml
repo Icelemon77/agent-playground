@@ -1,7 +1,7 @@
 [project]
 name = "agent-playground"
 version = "0.1.0"
-description = "Add your description here"
+description = "A from-scratch AI Agent system in Python: Function Calling / ReAct, tool registry, SSE streaming, context compaction, asyncio concurrency, and a zero-cost test suite"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -31,3 +31,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+# docs/ 里的 Python 代码块是手写对齐的文档示例，不希望被格式化器重排
+extend-exclude = ["docs/*.md"]

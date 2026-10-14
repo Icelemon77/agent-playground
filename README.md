@@ -168,7 +168,7 @@ flowchart TD
 ## 快速开始
 
 ```bash
-git clone <你的仓库地址>
+git clone https://github.com/Icelemon77/agent-playground.git
 cd agent-playground
 cp .env.example .env        # Windows: copy .env.example .env
 uv sync

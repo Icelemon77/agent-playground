@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, ValidationError
 
+from agent_playground.rag import DEFAULT_TOP_K, get_index, retrieve
+
 logger = logging.getLogger("agent_playground.tools")
 _REGISTRY: dict[str, tuple[Callable[..., str], type[BaseModel]]] = {}
 _SCHEMAS: list[dict[str, Any]] = []
@@ -190,6 +192,64 @@ def list_files() -> str:
     if not names:
         return "（data/ 目录为空）"
     return "、".join(names)
+
+
+# ---------------- 工具 5：检索知识库（RAG）----------------
+
+
+class SearchKnowledgeArgs(BaseModel):
+    """检索知识库的参数。"""
+
+    query: str = Field(
+        min_length=1,
+        max_length=200,
+        description="检索用的关键词，用关键词比用整句提问更容易命中",
+    )
+
+
+TOOL_OUTPUT_LIMIT = 780
+"""工具输出的字符上限。
+
+比 context.MAX_OBSERVATION_CHARS（800）小一点，留出余量：
+工具结果回到 agent 层还会过一次上下文压缩，超了就会被腰斩。
+检索结果是**按相关性排序**的，信息集中在头部——被保留头尾的策略一裁，
+受损的正好是次相关的那块。所以这里自己按优先级装箱，保证最相关的完整送达。
+"""
+
+
+@tool(
+    description=(
+        "在项目自己的知识库（docs/ 下的笔记与 README）里检索相关片段。"
+        "当问题涉及本项目的实现细节、实测数据或踩坑记录时，先调用它查证再回答，不要凭记忆作答。"
+    ),
+    params=SearchKnowledgeArgs,
+)
+def search_knowledge(query: str) -> str:
+    """检索知识库，返回最相关的几个片段（带来源文件与相似度）。"""
+    index, sources = get_index()
+    hits = retrieve(query, index, top_k=DEFAULT_TOP_K)
+    if not hits:
+        return (
+            "知识库中没有检索到相关内容。换一组关键词再试，或说明这一点不在知识库中。"
+        )
+
+    blocks: list[str] = []
+    used = 0
+    for i, (score, index_no, chunk) in enumerate(hits, start=1):
+        block = f"[{i}] 来源 {sources[index_no]}（相似度 {score:.3f}）\n{chunk}"
+        if blocks and used + len(block) + 2 > TOOL_OUTPUT_LIMIT:
+            break
+        blocks.append(block)
+        used += len(block) + 2
+
+    text = "\n\n".join(blocks)
+    if len(blocks) < len(hits):
+        # 告诉模型「还有内容没给」——它才有机会换关键词再查一次，
+        # 这就是 Agentic RAG 和「一次检索定生死」的区别。
+        text += (
+            f"\n\n（因长度限制只返回了 {len(blocks)}/{len(hits)} 条，可换关键词再检索）"
+        )
+    return text
 
 
 async def adispatch(name: str, raw_args: str) -> str:

@@ -1,0 +1,511 @@
+{
+  "tag": "baseline",
+  "timestamp": "2026-10-16T08:19:36+00:00",
+  "corpus": {
+    "chunks": 185,
+    "files": 7
+  },
+  "retrieval": {
+    "questions": 24,
+    "overall": {
+      "recall@1": 0.7291666666666666,
+      "recall@3": 0.8125,
+      "recall@5": 0.8958333333333334
+    },
+    "by_category": {
+      "fact": {
+        "recall@1": 0.7333333333333333,
+        "recall@3": 0.8,
+        "recall@5": 0.9333333333333333
+      },
+      "synth": {
+        "recall@1": 0.7222222222222222,
+        "recall@3": 0.8333333333333334,
+        "recall@5": 0.8333333333333334
+      }
+    }
+  },
+  "no_answer": {
+    "questions": 6,
+    "returned_hits": 6,
+    "max_scores": [
+      0.0883,
+      0.0991,
+      0.0894,
+      0.0946,
+      0.1154,
+      0.1327
+    ]
+  },
+  "separation": {
+    "decidable": false,
+    "positive_min": 0.1077,
+    "negative_max": 0.1327
+  },
+  "per_question": {
+    "1": {
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 1.0
+    },
+    "2": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "4": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "5": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "6": {
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 0.0
+    },
+    "9": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "10": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "13": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "14": {
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 0.0
+    },
+    "15": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "16": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "17": {
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 1.0
+    },
+    "18": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "19": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "20": {
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "21": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "22": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "23": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "24": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "25": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "26": {
+      "recall@1": 0.5,
+      "recall@3": 0.5,
+      "recall@5": 0.5
+    },
+    "27": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "28": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    "29": {
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    }
+  },
+  "end_to_end": {
+    "questions": 30,
+    "accuracy": 0.8,
+    "by_category": {
+      "fact": 0.8,
+      "synth": 0.6666666666666666,
+      "none": 1.0
+    },
+    "prompt_tokens": 15630,
+    "completion_tokens": 1569,
+    "cost_cny": 0.02366
+  },
+  "e2e_results": [
+    {
+      "id": 1,
+      "category": "fact",
+      "passed": false,
+      "answer": "资料中没有相关信息。\n\n背景资料里只提到：\n\n- 不做上下文压缩时的实验结果包括步数、输入/输出 token、成本等指标：[2]\n- 但 [2] 中给出的是 **输入 / 输出 = 1663 / 206 tokens**，这是「问 Agen",
+      "sources": [
+        "docs/rag_notes.md",
+        "docs/rag_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 2,
+      "category": "synth",
+      "passed": true,
+      "answer": "上下文压缩的优化效果是：输入 token 下降 42%（2175 → 1253），总成本下降 28%，信息覆盖 5/5 零丢失 [1]；按日志级别筛选，做到信息覆盖不变 [2]。\n\n批量并发的优化效果是：5 个任务耗时从 8.25s 降至 ",
+      "sources": [
+        "README.md",
+        "docs/progress_report.md",
+        "docs/testing_notes.md"
+      ]
+    },
+    {
+      "id": 3,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。\n\n背景资料[2]只提到向量部分用的是「TF-IDF 稀疏向量 + 余弦相似度」[2]，并未说明使用了哪个向量数据库。",
+      "sources": [
+        "README.md",
+        "docs/rag_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 4,
+      "category": "fact",
+      "passed": true,
+      "answer": "批量 5 个任务的并发优化效果是 **4.1x**：串行 8.25s，并发 **2.02s**，理论上限 5.0x [1]。\n\n该理论上限的算法是：limit=5，5 个任务 → 1 批 → Σ任务耗时 ÷ max任务耗时 [1]。",
+      "sources": [
+        "docs/async_notes.md",
+        "docs/async_notes.md",
+        "docs/async_notes.md"
+      ]
+    },
+    {
+      "id": 5,
+      "category": "fact",
+      "passed": true,
+      "answer": "头尾截断策略的信息覆盖率是 **3/5**。[1][3]",
+      "sources": [
+        "docs/agent_notes.md",
+        "docs/progress_report.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 6,
+      "category": "synth",
+      "passed": false,
+      "answer": "根据背景资料 [3]，只给出了其中一种方式（未做上下文压缩时的单次实验）的成本数据：\n\n- **步数**：2\n- **输入 / 输出**：1663 / 206 tokens\n- **成本**：¥0.00269\n\n资料中没有给出另外两种信息获",
+      "sources": [
+        "docs/rag_notes.md",
+        "docs/rag_notes.md",
+        "docs/rag_notes.md"
+      ]
+    },
+    {
+      "id": 7,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。",
+      "sources": [
+        "docs/testing_notes.md",
+        "README.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 8,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。",
+      "sources": [
+        "README.md",
+        "docs/agent_notes.md",
+        "docs/rag_notes.md"
+      ]
+    },
+    {
+      "id": 9,
+      "category": "fact",
+      "passed": true,
+      "answer": "按日志级别筛选 · 20 行的信息覆盖率是 **5/5**。[1][2]",
+      "sources": [
+        "docs/agent_notes.md",
+        "README.md",
+        "docs/progress_report.md"
+      ]
+    },
+    {
+      "id": 10,
+      "category": "synth",
+      "passed": true,
+      "answer": "依据背景资料：\n\n- **工具并发**的优化效果是 **3.0x（4.52s → 1.50s）**；其中异步工具（1.5s × 3）从 4.52s 降到 **1.50s**，同步工具 + `to_thread`（1.0s × 3）从 3.0",
+      "sources": [
+        "docs/progress_report.md",
+        "docs/async_notes.md",
+        "docs/testing_notes.md"
+      ]
+    },
+    {
+      "id": 11,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。\n\n背景资料中只涉及测试覆盖、配置副作用、Mock LLM 调用与依赖注入等内容 [1][2][3]，没有提到多用户支持、登录或鉴权机制。",
+      "sources": [
+        "docs/progress_report.md",
+        "docs/testing_notes.md",
+        "docs/testing_notes.md"
+      ]
+    },
+    {
+      "id": 12,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。\n\n背景资料里只提到了工具调用、`list_files`、天气查询等工具，以及两种 Agent 实现路线，但没有提到是否支持语音输入 [1][2][3]。",
+      "sources": [
+        "README.md",
+        "docs/rag_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 13,
+      "category": "fact",
+      "passed": true,
+      "answer": "1253 token。[1][2]",
+      "sources": [
+        "README.md",
+        "docs/agent_notes.md",
+        "docs/progress_report.md"
+      ]
+    },
+    {
+      "id": 14,
+      "category": "fact",
+      "passed": false,
+      "answer": "资料中没有相关信息。\n\n背景资料只提到：不做上下文压缩时的单次任务成本为 ¥0.00269 [2]，以及上下文压缩后总成本 **−28%** [3]，但没有给出压缩优化后的单次任务成本具体数值。",
+      "sources": [
+        "docs/rag_notes.md",
+        "docs/rag_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 15,
+      "category": "fact",
+      "passed": true,
+      "answer": "头尾截断 800 字符之后的总输入是 **1032 token**。[1]\n\n（对应 v1 策略“头尾截断 800 字符”，其总输入 token 为 1032。[1]）",
+      "sources": [
+        "README.md",
+        "docs/rag_notes.md",
+        "docs/rag_notes.md"
+      ]
+    },
+    {
+      "id": 16,
+      "category": "fact",
+      "passed": true,
+      "answer": "根据背景资料，Function Calling 用的完整 JSON Schema 比自然语言说明**长 4.56 倍**。[1][2][3]",
+      "sources": [
+        "docs/agent_notes.md",
+        "README.md",
+        "docs/progress_report.md"
+      ]
+    },
+    {
+      "id": 17,
+      "category": "fact",
+      "passed": false,
+      "answer": "资料中没有相关信息。\n\n背景资料 [1] 只提到工具定义使用「JSON Schema（三层结构）」，但没有给出完整 JSON Schema 的具体大小或字节数；[2] 也只提到「JSON Schema」作为结构化输出的一部分，未提供尺寸数据",
+      "sources": [
+        "docs/progress_report.md",
+        "NEEDS.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 18,
+      "category": "fact",
+      "passed": true,
+      "answer": "76 个。[1][2][3]",
+      "sources": [
+        "README.md",
+        "README.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 19,
+      "category": "fact",
+      "passed": true,
+      "answer": "根据背景资料 [1]，项目的语句覆盖率是 **40%**（711 条语句，未覆盖 425 条）。",
+      "sources": [
+        "README.md",
+        "docs/rag_notes.md",
+        "docs/testing_notes.md"
+      ]
+    },
+    {
+      "id": 20,
+      "category": "fact",
+      "passed": true,
+      "answer": "单元测试跑完需要的时间，资料中有两种说法：约 1.3 秒 [1]、约 0.6 秒 [2]。",
+      "sources": [
+        "README.md",
+        "README.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 21,
+      "category": "fact",
+      "passed": true,
+      "answer": "共享 httpx 客户端之后，第一次运行提升了 **约 +52%**[1][2]。",
+      "sources": [
+        "docs/async_notes.md",
+        "README.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 22,
+      "category": "fact",
+      "passed": true,
+      "answer": "同步工具漏掉 `to_thread` 包装时，并发加速比是 **1.0x**（并发会静默失效，实测 1.00s 退化成 3.00s，不报任何错）[1][2]。",
+      "sources": [
+        "README.md",
+        "docs/async_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 23,
+      "category": "fact",
+      "passed": true,
+      "answer": "异步客户端初始化一次大约要 **150ms**（中位数 **149.6ms**）[1][3]。",
+      "sources": [
+        "README.md",
+        "docs/async_notes.md",
+        "docs/async_notes.md"
+      ]
+    },
+    {
+      "id": 24,
+      "category": "synth",
+      "passed": true,
+      "answer": "上下文压缩的输入 token 降低 **42%**（2175 → 1253），总成本降低 **28%** [1]。",
+      "sources": [
+        "README.md",
+        "README.md",
+        "docs/agent_notes.md"
+      ]
+    },
+    {
+      "id": 25,
+      "category": "synth",
+      "passed": false,
+      "answer": "两种实现方式的加速比分别是 **3.0x** 和 **3.0x**：\n\n- 异步工具（`async def`，各 1.5s）：串行 4.52s，并发 **1.50s**，加速 **3.0x** [1]\n- 同步工具 + `to_thread",
+      "sources": [
+        "README.md",
+        "docs/testing_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 26,
+      "category": "synth",
+      "passed": false,
+      "answer": "资料中没有相关信息。\n\n背景资料[1][2]只给出了上下文压缩策略的 token 降幅与成本数据；[3]虽然列出了 function calling 与 ReAct 在“幂运算”“日志总结”两个任务上的输入 token，但日志总结一行的成本",
+      "sources": [
+        "README.md",
+        "README.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 27,
+      "category": "synth",
+      "passed": true,
+      "answer": "复用客户端之后：第一次提升约 **+52%**，第二次提升约 **+61%**。[1]",
+      "sources": [
+        "docs/async_notes.md",
+        "README.md",
+        "docs/async_notes.md"
+      ]
+    },
+    {
+      "id": 28,
+      "category": "synth",
+      "passed": true,
+      "answer": "单元测试数量是 76 个，覆盖率是 37% → 40%，运行耗时是 0.57 秒。[1]\n\n另外，[3] 中也提到测试为 76 个用例、1.3 秒跑完；但就覆盖率而言，[3] 未提及，[1] 给出的覆盖率是 37% → 40%。",
+      "sources": [
+        "docs/testing_notes.md",
+        "docs/testing_notes.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": 29,
+      "category": "synth",
+      "passed": true,
+      "answer": "原文 35 行，压缩后 37 行。[2]",
+      "sources": [
+        "docs/testing_notes.md",
+        "docs/testing_notes.md",
+        "docs/testing_notes.md"
+      ]
+    },
+    {
+      "id": 30,
+      "category": "none",
+      "passed": true,
+      "answer": "资料中没有相关信息。",
+      "sources": [
+        "docs/testing_notes.md",
+        "docs/testing_notes.md",
+        "README.md"
+      ]
+    }
+  ]
+}

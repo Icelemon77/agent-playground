@@ -36,6 +36,7 @@ PROMPT_TEMPLATE = """【背景资料】
 
 _CJK = r"\u4e00-\u9fff"
 _TOKEN_RE = re.compile(rf"[{_CJK}]+|[A-Za-z0-9_]+")
+_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 
 
 def tokenize(text: str) -> list[str]:
@@ -56,33 +57,103 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
-def chunk_text(
-    text: str,
-    size: int = DEFAULT_CHUNK_SIZE,
-    overlap: int = DEFAULT_OVERLAP,
-) -> list[str]:
-    """把长文档切成块：按空行分段，再按字符数聚合成接近 size 的块。
+def split_sections(text: str) -> list[tuple[str, str]]:
+    """按 Markdown 标题把文档切成 [(标题, 正文), ...]。
 
-    块之间保留 overlap 个字符的重叠，避免一句话刚好被切在边界上、两块都读不懂。
+    没有标题的文档会返回 [("", 全文)]，下游逻辑不用分两种情况。
 
-    注意两个已知行为：加了重叠之后，块的实际长度是 size + overlap；
-    最后一块可能不足 size，这是正常的（不为了凑整而丢掉尾巴）。
+    要跳过围栏代码块里的行——`# 这是一句 bash 注释` 长得和标题一样，
+    但它不是章节边界，当成标题会把一段代码从中间劈开。
     """
-    if size <= 0:
-        raise ValueError(f"size 必须为正数，当前为 {size}")
-    if not 0 <= overlap < size:
-        raise ValueError(
-            f"overlap 必须在 [0, size) 范围内，当前 overlap={overlap}, size={size}"
-        )
+    sections: list[tuple[str, list[str]]] = []
+    title = ""
+    body: list[str] = []
+    in_fence = False
 
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            body.append(line)
+            continue
+        if not in_fence and _HEADING_RE.match(line):
+            if title or any(part.strip() for part in body):
+                sections.append((title, body))
+            title = line.strip()
+            body = []
+        else:
+            body.append(line)
+
+    if title or any(part.strip() for part in body):
+        sections.append((title, body))
+    return [(head, "\n".join(lines)) for head, lines in sections]
+
+
+def _split_oversized(para: str, size: int) -> list[str]:
+    """超长段落按行切成不超过 size 的片段；表格片段会重复表头。
+
+    按字符硬切（`para[i:i+size]`）会把表格的一行劈成两半，切出来的碎块
+    既没有列名也没有版本号，检索时几乎不可能命中。实测 ReAct 范式对照表
+    就被这样切开过，模型因此回答「表格在此处被截断，无法计算」。
+
+    表格按行切、并在每段重复表头，碎片就仍然是自解释的。
+    """
+    if len(para) <= size:
+        return [para]
+
+    lines = para.splitlines()
+    is_table = len(lines) >= 3 and all(
+        line.strip().startswith("|") for line in lines if line.strip()
+    )
+    header = lines[:2] if is_table else []
+    body = lines[2:] if is_table else lines
+
+    parts: list[str] = []
+    buf: list[str] = []
+
+    def flush() -> None:
+        if buf:
+            parts.append("\n".join([*header, *buf]))
+            buf.clear()
+
+    for line in body:
+        if len(line) > size:  # 单行本身超长，只能按字符切
+            flush()
+            parts.extend(line[i : i + size] for i in range(0, len(line), size))
+            continue
+        if buf and len("\n".join([*header, *buf, line])) > size:
+            flush()
+        buf.append(line)
+    flush()
+
+    if not parts:
+        return ["\n".join(header)] if header else [para[:size]]
+    return parts
+
+
+def _overlap_tail(text: str, max_chars: int) -> str:
+    """截取用于重叠的尾巴，从行边界开始。
+
+    按字符数硬截会在任意位置下刀，实测切出过以 `tion` 开头的块
+    （`Observation` 被切剩的），以及以 `| **1253** | **5/5** |` 这种
+    残缺表格行开头的块——丢了列名和版本号，检索几乎不可能命中。
+    从行边界开始取，就不会把一整行劈成两半。
+    """
+    if len(text) <= max_chars:
+        return text
+    tail = text[-max_chars:]
+    newline = tail.find("\n")
+    if newline == -1:
+        return tail
+    return tail[newline + 1 :]
+
+
+def _chunk_plain(text: str, size: int, overlap: int) -> list[str]:
+    """按空行分段，再把段落聚合成接近 size 字符的块，块间留 overlap 重叠。"""
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
     units: list[str] = []
     for para in paragraphs:
-        if len(para) <= size:
-            units.append(para)
-        else:
-            units.extend(para[i : i + size] for i in range(0, len(para), size))
+        units.extend(_split_oversized(para, size))
 
     chunks: list[str] = []
     buf = ""
@@ -98,9 +169,39 @@ def chunk_text(
     if overlap and len(chunks) > 1:
         with_overlap = [chunks[0]]
         for prev, cur in pairwise(chunks):
-            with_overlap.append(f"{prev[-overlap:]}\n{cur}")
+            head = _overlap_tail(prev, overlap)
+            with_overlap.append(f"{head}\n{cur}" if head else cur)
         chunks = with_overlap
 
+    return chunks
+
+
+def chunk_text(
+    text: str,
+    size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_OVERLAP,
+) -> list[str]:
+    """把长文档切成块：先按 Markdown 标题切章节，章节内再按字符数切。
+
+    块之间保留 overlap 个字符的重叠，避免一句话刚好被切在边界上、两块都读不懂。
+    标题会作为块的前缀保留——标题里往往就有关键词，检索时应该一起算权重。
+
+    注意两个已知行为：加了重叠之后，块的实际长度是 size + overlap；
+    最后一块可能不足 size，这是正常的（不为了凑整而丢掉尾巴）。
+    """
+    if size <= 0:
+        raise ValueError(f"size 必须为正数，当前为 {size}")
+    if not 0 <= overlap < size:
+        raise ValueError(
+            f"overlap 必须在 [0, size) 范围内，当前 overlap={overlap}, size={size}"
+        )
+
+    chunks: list[str] = []
+    for title, body in split_sections(text):
+        # 标题要算进 size，否则加了标题的块会明显超出预期长度
+        budget = max(size - len(title) - 1, size // 2)
+        for piece in _chunk_plain(body, budget, overlap):
+            chunks.append(f"{title}\n{piece}" if title else piece)
     return chunks
 
 

@@ -26,6 +26,7 @@ from agent_playground.cost import estimate_cost_cny
 from agent_playground.eval_set import (
     DEFAULT_PATH,
     EvalItem,
+    fingerprint,
     load_eval_set,
     matches_any,
 )
@@ -216,6 +217,32 @@ def load_existing_reports(except_tag: str) -> dict[str, dict[str, Any]]:
     return reports
 
 
+def stale_warning(
+    current: dict[str, Any], others: dict[str, dict[str, Any]]
+) -> str | None:
+    """语料或评测集变了就提示基线过期。
+
+    报告的可比性依赖两个会变的东西：**检索语料**（改一份文档，连 README 也算，
+    切块和排名就会变）和**评测集本身**（改个措辞、更新一个过期的 expect，
+    召回和准确率也会变）。两个都记指纹，每次运行比一次。
+    """
+    stale = [
+        tag
+        for tag, report in others.items()
+        if report.get("corpus", {}).get("fingerprint")
+        != current["corpus"]["fingerprint"]
+        or report.get("eval_set", {}).get("fingerprint")
+        != current["eval_set"]["fingerprint"]
+    ]
+    if not stale:
+        return None
+    return (
+        f"⚠ 语料或评测集与 {len(stale)} 份历史报告不一致"
+        f"（{', '.join(sorted(stale))}）——"
+        "那些数字已不代表当前状态，对比仅供参考，基线需要重跑。"
+    )
+
+
 def print_comparison(
     current_tag: str, current: dict[str, Any], others: dict[str, dict[str, Any]]
 ) -> None:
@@ -259,6 +286,8 @@ def main() -> int:
     print(
         f"评测集 {len(items)} 条 | 知识库 {index.size} 个块 / {len(set(sources))} 个文件"
     )
+    print(f"知识库指纹：{index.fingerprint()}")
+    print(f"评测集指纹：{fingerprint(items)}")
 
     retrieval, per_question = evaluate_retrieval(items, index)
     no_answer = evaluate_no_answer(items, index)
@@ -269,10 +298,18 @@ def main() -> int:
         for item in items
         if item.category != "none"
     ]
-    report: dict[str, object] = {
+    report: dict[str, Any] = {
         "tag": args.tag,
         "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-        "corpus": {"chunks": index.size, "files": len(set(sources))},
+        "corpus": {
+            "chunks": index.size,
+            "files": len(set(sources)),
+            "fingerprint": index.fingerprint(),
+        },
+        "eval_set": {
+            "questions": len(items),
+            "fingerprint": fingerprint(items),
+        },
         "retrieval": retrieval,
         "no_answer": no_answer,
         "separation": separation(no_answer, positive_scores),
@@ -317,7 +354,11 @@ def main() -> int:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n报告已写入 {out}")
 
-    print_comparison(args.tag, report, load_existing_reports(args.tag))
+    others = load_existing_reports(args.tag)
+    warning = stale_warning(report, others)
+    if warning:
+        print(f"\n{warning}")
+    print_comparison(args.tag, report, others)
     return 0
 
 

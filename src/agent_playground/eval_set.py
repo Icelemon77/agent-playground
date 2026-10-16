@@ -8,6 +8,7 @@ JSON 格式错、expect 在知识库里不存在、分类配比失衡——
 「expect 在文档里存在，但不在检索范围内」这种自欺欺人的通过。
 """
 
+import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
@@ -29,6 +30,20 @@ class EvalItem:
     category: str
     question: str
     expect: list[str]
+
+
+def fingerprint(items: list[EvalItem]) -> str:
+    """评测集指纹：题目与期望答案的内容哈希。
+
+    改了评测集，历史报告同样不可比——加一条、改个措辞、更新一个过期的
+    `expect`，召回和准确率都会变。报告里必须记下它对应哪一版评测集。
+    实测过：把覆盖率那条的 expect 从过期的 40% 更正为当前值，端到端就差一道题。
+    """
+    payload = "\n".join(
+        f"{item.id}|{item.category}|{item.question}|{'~'.join(item.expect)}"
+        for item in sorted(items, key=lambda x: x.id)
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
 
 def knowledge_text() -> str:

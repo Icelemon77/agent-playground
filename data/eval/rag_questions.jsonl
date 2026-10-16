@@ -1,0 +1,30 @@
+{"id": 1, "category": "fact", "question": "不做上下文压缩时单次任务的总输入是多少 token？", "expect": ["2175"]}
+{"id": 2, "category": "synth", "question": "上下文压缩和批量并发的优化效果分别是什么？", "expect": ["42%", "4.1x"]}
+{"id": 3, "category": "none", "question": "这个项目用的是哪个向量数据库？", "expect": []}
+{"id": 4, "category": "fact", "question": "批量 5 个任务的并发优化效果是多少？", "expect": ["2.02s"]}
+{"id": 5, "category": "fact", "question": "头尾截断策略的信息覆盖率是多少？", "expect": ["3/5"]}
+{"id": 6, "category": "synth", "question": "三种信息获取方式的成本分别是多少？", "expect": ["0.00065", "0.00258", "0.00373"]}
+{"id": 7, "category": "none", "question": "这个项目的 Docker 镜像地址是什么？", "expect": []}
+{"id": 8, "category": "none", "question": "项目的 CI 流水线用什么工具？", "expect": []}
+{"id": 9, "category": "fact", "question": "按日志级别筛选 · 20 行的信息覆盖率是多少？", "expect": ["5/5"]}
+{"id": 10, "category": "synth", "question": "工具并发和批量并发的优化效果分别是什么？", "expect": ["3.0x", "4.1x"]}
+{"id": 11, "category": "none", "question": "这个项目支持多用户使用吗？有没有登录和鉴权机制？", "expect": []}
+{"id": 12, "category": "none", "question": "这个 Agent 支持语音输入吗？", "expect": []}
+{"id": 13, "category": "fact", "question": "按日志级别筛选 20 行之后，总输入降到多少 token？", "expect": ["1253"]}
+{"id": 14, "category": "fact", "question": "上下文压缩优化后的单次任务成本是多少？", "expect": ["0.00317"]}
+{"id": 15, "category": "fact", "question": "头尾截断 800 字符之后的总输入是多少 token？", "expect": ["1032"]}
+{"id": 16, "category": "fact", "question": "function calling 用的完整 JSON Schema 比自然语言说明长多少倍？", "expect": ["4.56 倍"]}
+{"id": 17, "category": "fact", "question": "function calling 的完整 JSON Schema 有多大？", "expect": ["1272 字符"]}
+{"id": 18, "category": "fact", "question": "项目一共有多少个单元测试？", "expect": ["76 个"]}
+{"id": 19, "category": "fact", "question": "项目的语句覆盖率是多少？", "expect": ["40%"]}
+{"id": 20, "category": "fact", "question": "单元测试跑完需要多久？", "expect": ["0.6 秒"]}
+{"id": 21, "category": "fact", "question": "共享 httpx 客户端之后，第一次运行提升了多少？", "expect": ["52%"]}
+{"id": 22, "category": "fact", "question": "同步工具漏掉 to_thread 包装时，并发加速比是多少？", "expect": ["1.0x"]}
+{"id": 23, "category": "fact", "question": "异步客户端初始化一次大约要多少毫秒？", "expect": ["149.6ms"]}
+{"id": 24, "category": "synth", "question": "上下文压缩的输入 token 和总成本分别降低多少？", "expect": ["42%", "28%"]}
+{"id": 25, "category": "synth", "question": "同一轮并发执行工具时，「同步工具 + to_thread 包装」和「同步工具漏掉 to_thread 包装」的加速比分别是多少？", "expect": ["3.0x", "1.0x"]}
+{"id": 26, "category": "synth", "question": "ReAct 相比 function calling，输入 token 的降幅范围是百分之多少？", "expect": ["28%", "56%"]}
+{"id": 27, "category": "synth", "question": "复用客户端之后，两次运行分别提升了多少？", "expect": ["52%", "61%"]}
+{"id": 28, "category": "synth", "question": "单元测试的数量、覆盖率和运行耗时分别是多少？", "expect": ["76 个", "40%", "0.6 秒|0.57 秒"]}
+{"id": 29, "category": "synth", "question": "重复行导致压缩失效的那个 bug，原文多少行、压缩后多少行？", "expect": ["35 行", "37 行"]}
+{"id": 30, "category": "none", "question": "这个项目用的是什么开源许可证？", "expect": []}

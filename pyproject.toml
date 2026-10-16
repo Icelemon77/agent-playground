@@ -33,5 +33,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
-# docs/ 里的 Python 代码块是手写对齐的文档示例，不希望被格式化器重排
-extend-exclude = ["docs/*.md"]
+# Markdown 里的 Python 代码块是手写对齐的文档示例，不希望被格式化器重排。
+# `*.md` 是 gitignore 语义，覆盖根目录（README.md）和各子目录（docs/）
+extend-exclude = ["*.md"]
+# 默认情况下，显式指定文件路径（ruff format README.md）会绕过上面这条排除。
+# 打开 force-exclude 后，排除规则对显式路径同样生效。
+force-exclude = true

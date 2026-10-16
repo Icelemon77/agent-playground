@@ -8,6 +8,7 @@
    把两件事混在一起，就没法在启动时建一次、之后反复查。
 """
 
+import hashlib
 import math
 import re
 import sys
@@ -25,6 +26,11 @@ DEFAULT_OVERLAP = 50
 DEFAULT_TOP_K = 3
 DOCS_DIR = Path("docs")
 EXTRA_DOCS = (Path("README.md"), Path("NEEDS.md"))
+# 评测报告不进检索语料。它逐题讨论了评测集的问题、示例里还复制了 expect 的取值，
+# 进了语料就同时造成两件事：答案多了一份副本（假阳性），
+# 以及模型会读到「第 N 题…没有给出具体数值」这类失败分析、照着拒答。
+# 实测：加入这份报告后端到端从 0.93 掉到 0.83，模型开始逐题讨论「第 14 题」。
+NON_RETRIEVABLE_DOCS = ("rag_eval.md",)
 
 PROMPT_TEMPLATE = """【背景资料】
 {context}
@@ -278,6 +284,17 @@ class TfidfIndex:
         """索引里的块数。"""
         return len(self._chunks)
 
+    def fingerprint(self) -> str:
+        """知识库内容指纹（块的 SHA256 前 12 位）。
+
+        知识库是会变的输入：改一份文档、甚至只是更新 README，切块和排名都会跟着变，
+        历史报告里的数字就不再代表当前状态。所以每次评测都要记下它对应哪个知识库。
+        实测过：写完评测报告本身（`docs/` 是知识库的一部分）就让块数从 231 涨到 277，
+        recall@3 从 0.94 掉到 0.896。
+        """
+        digest = hashlib.sha256("\n".join(self._chunks).encode("utf-8"))
+        return digest.hexdigest()[:12]
+
 
 def load_documents(
     docs_dir: Path | str = DOCS_DIR,
@@ -287,7 +304,7 @@ def load_documents(
     documents: list[tuple[str, str]] = []
     paths = sorted(Path(docs_dir).glob("*.md")) if Path(docs_dir).exists() else []
     for path in [*paths, *extra]:
-        if path.is_file():
+        if path.is_file() and path.name not in NON_RETRIEVABLE_DOCS:
             documents.append((path.as_posix(), path.read_text(encoding="utf-8")))
     return documents
 

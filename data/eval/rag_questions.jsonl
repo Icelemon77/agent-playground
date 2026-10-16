@@ -16,7 +16,7 @@
 {"id": 16, "category": "fact", "question": "function calling 用的完整 JSON Schema 比自然语言说明长多少倍？", "expect": ["4.56 倍"]}
 {"id": 17, "category": "fact", "question": "function calling 的完整 JSON Schema 有多大？", "expect": ["1272 字符"]}
 {"id": 18, "category": "fact", "question": "项目一共有多少个单元测试？", "expect": ["76 个"]}
-{"id": 19, "category": "fact", "question": "项目的语句覆盖率是多少？", "expect": ["40%"]}
+{"id": 19, "category": "fact", "question": "项目当前的语句覆盖率是多少？", "expect": ["28%"]}
 {"id": 20, "category": "fact", "question": "单元测试跑完需要多久？", "expect": ["0.6 秒"]}
 {"id": 21, "category": "fact", "question": "共享 httpx 客户端之后，第一次运行提升了多少？", "expect": ["52%"]}
 {"id": 22, "category": "fact", "question": "同步工具漏掉 to_thread 包装时，并发加速比是多少？", "expect": ["1.0x"]}

@@ -262,6 +262,89 @@ AI > 你好，lemon！很高兴认识你，大三同学。有什么我可以帮�
 预估花费：¥0.001279
 ```
 
+## API 服务
+
+CLI 是给人用的；`api.py` 把同一套能力包成 HTTP 接口，任何程序都能调——
+**调用方不用装 Python、不用配 key**，发一个 JSON 请求就行。
+
+### 启动
+
+```bash
+uv sync
+uv run uvicorn agent_playground.api:app --reload
+```
+
+打开 <http://127.0.0.1:8000/docs> 是自动生成的交互式文档，每个接口都能直接点
+「Try it out」发请求，不用写代码。
+
+两个注意：
+
+- `--reload` 只在开发时用（改 `.py` 会自动重启）
+- **改了 `docs/` 或 `README.md` 之后必须手动重启服务**——索引在进程内缓存，
+  而 `--reload` 只监听 `.py` 文件
+
+### 接口
+
+| 方法 | 路径 | 作用 | 花 API 钱 |
+|---|---|---|---|
+| GET | `/health` | 服务状态、知识库块数与指纹 | 否 |
+| POST | `/search` | 只检索，返回命中的块与相似度 | 否 |
+| POST | `/ask` | 检索 + 生成，返回答案与引用 | 是 |
+| POST | `/ask/stream` | 同上，用 SSE 边生成边推送 | 是 |
+
+**`/search` 和 `/ask` 分开是为了归因**：答案不对时先打 `/search`，就能分清是
+「检索没找到」还是「找到了但模型答错」；而且它不花钱，可以随便调。
+
+### 一次真实响应
+
+`POST /ask`，问「不做上下文压缩时总输入是多少 token？」（节选，`chunk` 已截断）：
+
+```json
+{
+  "answer": "不做上下文压缩时总输入是 **2175 tokens**。[1][3]",
+  "sources": ["docs/agent_notes.md", "docs/rag_notes.md"],
+  "hits": [
+    {"score": 0.421, "chunk": "## 一、先证明问题存在…", "source": "docs/rag_notes.md"},
+    {"score": 0.2491, "chunk": "## 一、先证明问题存在…", "source": "docs/rag_notes.md"},
+    {"score": 0.199, "chunk": "### 4. 上下文成本是累积的…", "source": "docs/agent_notes.md"}
+  ],
+  "prompt_tokens": 430,
+  "completion_tokens": 17
+}
+```
+
+`sources` 是答案实际引用的文件。**RAG 的价值一半在「答案对」，另一半在「能说出依据」。**
+
+（模型的措辞不固定——请求里没有固定 `temperature`，所以同样的问题两次调用，
+字数可能不同，但结论和引用应当一致。）
+
+### 错误码
+
+| 状态码 | 含义 | 例子 |
+|---|---|---|
+| **200** | 成功，**包括「知识库里没有答案」** | `{"answer": "资料中没有相关信息"}` |
+| 422 | 参数不合法（Pydantic 在进入函数前拦下） | `top_k=99` → `loc: ["body","top_k"]` |
+| 502 | 上游模型不可达 | `{"detail": "大模型调用失败，请稍后重试"}` |
+
+两个刻意的选择：
+
+- **「查不到」返 200 而不是 4xx**——那是业务结果，不是接口错误
+- **上游失败返 502 而不是 500**——500 表示「我的代码有 bug」，502 表示「我依赖的
+  服务挂了」。监控靠这个区分「该改代码」还是「该重试」
+
+### `/health` 里的指纹
+
+```json
+{"status": "ok", "chunks": 244, "files": 7, "fingerprint": "9571d2275279", "model": "deepseek-flash"}
+```
+
+`fingerprint` 是知识库内容的哈希，用途是**部署后确认线上跑的是哪一版语料**：
+改了文档、重启服务之后，指纹变了才说明新语料真的生效了。
+
+（上面的数值是示例——文档一改，块数和指纹都会变，这正是这个字段的意义。）
+
+这个机制来自评测，见 [`docs/rag_eval.md`](docs/rag_eval.md) 第七节。
+
 ## 目录结构
 
 ```
@@ -283,6 +366,7 @@ src/agent_playground/
 ├── batch.py           批量并发任务
 ├── eval_set.py        评测集加载与质量门禁（校验评测集本身是否可靠）
 ├── eval_rag.py        RAG 评测：召回 / 无答案拒答 / 端到端三层指标
+├── api.py             HTTP 接口：/health、/search、/ask、/ask/stream
 ├── cli.py             交互式命令行对话
 └── main.py            启动链路自检入口
 
@@ -347,7 +431,7 @@ uv run python -m agent_playground.agent "根据知识库，我的项目是怎么
 也可以绕过 Agent、直接跑检索加生成这条固定流程（用来对比两种形态）：
 
 ```bash
-uv run python -m agent_playground.rag "我的项目在不做上下文压缩时，单次任务的总输入是多少 token？"
+uv run python -m agent_playground.rag "这个项目的检索用的是什么算法？"
 ```
 
 ## 两种 Agent 实现

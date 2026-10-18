@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import Any, Protocol
 
 import httpx
@@ -11,7 +12,6 @@ from rich.console import Console
 
 from agent_playground.config import Settings
 from agent_playground.errors import LLMCallError
-from collections.abc import Callable
 
 console = Console()
 
@@ -54,7 +54,7 @@ def stream_chat(
     *,
     tools: list[dict] | None = None,
     show_reasoning: bool = False,
-    on_chunk: Callable[[str],None] | None=None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> dict:
     """流式调用 chat/completions，边收边打印，返回本次调用的统计信息。"""
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
@@ -146,7 +146,6 @@ def stream_chat(
         "answer_ttft": (answer_first_at - started) if answer_first_at else 0.0,
         "elapsed": elapsed,
     }
-
 
 
 async def achat(

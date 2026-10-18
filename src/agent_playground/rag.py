@@ -13,11 +13,12 @@ import math
 import re
 import sys
 from collections import Counter
+from collections.abc import Callable
 from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
 from typing import Self
-from collections.abc import Callable
+
 from agent_playground.config import Settings
 from agent_playground.llm_client import stream_chat
 
@@ -367,7 +368,8 @@ def generate(
             "elapsed": 0.0,
         }
     result = stream_chat(
-        [{"role": "user", "content": build_prompt(question, hits)}], settings,
+        [{"role": "user", "content": build_prompt(question, hits)}],
+        settings,
         on_chunk=on_chunk,
     )
     return {

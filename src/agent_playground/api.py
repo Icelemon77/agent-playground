@@ -5,15 +5,19 @@
 """
 
 import json
+import logging
 import queue
 import threading
+import uuid
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_playground.config import Settings
+from agent_playground.logging_config import setup_logging
 from agent_playground.rag import (
     DEFAULT_TOP_K,
     answer,
@@ -23,11 +27,21 @@ from agent_playground.rag import (
 )
 
 settings = Settings()
+logger = logging.getLogger("agent_playground.api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """服务启动时初始化日志（写 logs/app.jsonl + 控制台）。"""
+    setup_logging(settings.log_level)
+    yield
+
 
 app = FastAPI(
     title="agent-playground",
     description="从零手写的 AI Agent 系统的 HTTP 接口",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -134,9 +148,12 @@ def ask(req: AskRequest) -> AskResponse:
     index, sources = get_index()
     try:
         result = answer(req.question, index, settings, top_k=req.top_k)
-    except Exception as exc:  # 见下面「为什么这里可以宽」
+    except Exception as exc:  # 进程边界：未知异常会变成 500 + 堆栈，这里统一兜成 502
+        error_id = uuid.uuid4().hex[:8]
+        logger.exception("ask_failed id=%s question=%s", error_id, req.question[:40])
         raise HTTPException(
-            status_code=502, detail="大模型调用失败，请稍后重试"
+            status_code=502,
+            detail=f"大模型调用失败，请稍后重试（错误编号 {error_id}）",
         ) from exc
 
     usage = result.get("usage") or {}

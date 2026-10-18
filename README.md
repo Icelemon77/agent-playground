@@ -13,6 +13,8 @@ SSE 流式解析、上下文压缩、asyncio 并发执行与失败隔离、**知
 | RAG 检索 | 按 Markdown 结构切块后，recall@3 **0.81 → 0.94**、端到端 **0.80 → 0.93** |
 | 测试 | **85 个**用例，**不需要 API key、不产生费用**（裸跑约 0.6 秒，带覆盖率约 1.4 秒） |
 
+**在线演示**：<https://agent-playground-xc28.onrender.com> —— 免费层会休眠，首次打开约需 50 秒
+
 ## 这个项目做了什么
 
 一句话：**把「调一次大模型」这件事，做成一个可测试、可观测、能并发、能算成本的系统。**
@@ -267,7 +269,25 @@ AI > 你好，lemon！很高兴认识你，大三同学。有什么我可以帮�
 CLI 是给人用的；`api.py` 把同一套能力包成 HTTP 接口，任何程序都能调——
 **调用方不用装 Python、不用配 key**，发一个 JSON 请求就行。
 
-### 启动
+### 在线演示
+
+> **<https://agent-playground-xc28.onrender.com>**
+
+打开是首页，上面列了三个**实测答得对**的示例问题，可以直接在 `/docs` 里试。
+
+两点需要知道：
+
+- **免费层 15 分钟无访问会休眠**，唤醒约需 **50 秒或更久**（Render 给出的提示原文如此）；
+  醒来之后 `/health` 实测约 **1.3 秒**返回
+- 演示环境每天限制 **200 次**生成调用；`/health` 和 `/search` 不限，它们不花钱
+
+想确认线上跑的是哪一版代码，打开 `/health` 看 `fingerprint`，和本地比一下：
+
+```bash
+uv run python -c "from agent_playground.rag import get_index; print(get_index()[0].fingerprint())"
+```
+
+### 本地启动
 
 ```bash
 uv sync

@@ -196,3 +196,49 @@ def test_stream_pushes_sources_then_deltas(
     assert payloads[-1] == "[DONE]"
     text = "".join(json.loads(p)["delta"] for p in payloads[1:-1])
     assert text == "你好，世界"
+
+@pytest.fixture(autouse=True)
+def reset_generation_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """每个测试都从「今天还没用过额度」开始。
+
+    不加这个，测试之间共享计数器，结果就取决于执行顺序——
+    「单独跑能过、一起跑就挂」是最难查的一类失败。
+    """
+    monkeypatch.setattr(api_module, "_budget_day", None)
+    monkeypatch.setattr(api_module, "_budget_used", 0)
+
+def test_generation_budget_returns_429(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_corpus: tuple[TfidfIndex, tuple[str, ...]],
+) -> None:
+    """额度用完要返 429，而不是让调用方一直花钱。"""
+    monkeypatch.setattr(api_module, "DAILY_GENERATION_LIMIT", 2)
+    monkeypatch.setattr(api_module, "_budget_used", 0)
+    monkeypatch.setattr(api_module, "_budget_day", None)
+    monkeypatch.setattr(
+        api_module,
+        "answer",
+        lambda *a, **k: {
+            "answer": "探针",
+            "hits": [],
+            "usage": {},
+            "elapsed": 0.0,
+        },
+    )
+
+    c = TestClient(app)
+    assert c.post("/ask", json={"question": "压缩"}).status_code == 200
+    assert c.post("/ask", json={"question": "压缩"}).status_code == 200
+    r = c.post("/ask", json={"question": "压缩"})
+    assert r.status_code == 429
+    assert "额度" in r.json()["detail"]
+
+
+def test_budget_resets_on_new_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    """跨天要自动清零，不然第二天永远用不了。"""
+    from datetime import date
+
+    monkeypatch.setattr(api_module, "_budget_used", 5)
+    monkeypatch.setattr(api_module, "_budget_day", date(2000, 1, 1))
+
+    assert api_module.consume_generation_budget() == 1

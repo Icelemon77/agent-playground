@@ -11,11 +11,12 @@ import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from email.policy import default
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
-
+from datetime import UTC, date, datetime
 from agent_playground.config import Settings
 from agent_playground.logging_config import setup_logging
 from agent_playground.rag import (
@@ -25,11 +26,33 @@ from agent_playground.rag import (
     get_index,
     retrieve,
 )
-
+DAILY_GENERATION_LIMIT = 200
 settings = Settings()
 logger = logging.getLogger("agent_playground.api")
+_budget_lock = threading.Lock()
+_budget_day: date | None = None
+_budget_used = 0
 
+def consume_generation_budget() -> int:
+    """占用一次生成额度，返回今天已用次数；超限抛 429。
 
+    放在调用模型**之前**——失败的请求也算一次，
+    否则一个被刷到永远失败的请求能反复打上游。
+    """
+    global _budget_day,_budget_used
+
+    today = datetime.now(UTC).date()
+    with _budget_lock:
+        if _budget_day !=today:
+            _budget_day = today
+            _budget_used = 0
+        if _budget_used >= DAILY_GENERATION_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"演示额度已用完(每天{DAILY_GENERATION_LIMIT}次生成),请明天再试"
+            )
+        _budget_used +=1
+        return _budget_used
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """服务启动时初始化日志（写 logs/app.jsonl + 控制台）。"""
@@ -145,6 +168,7 @@ def search(req: SearchRequest) -> SearchResponse:
 
 @app.post("/ask", response_model=AskResponse, summary="问答（非流式）")
 def ask(req: AskRequest) -> AskResponse:
+    consume_generation_budget()
     index, sources = get_index()
     try:
         result = answer(req.question, index, settings, top_k=req.top_k)
@@ -175,6 +199,7 @@ def sse(payload: dict) -> str:
 
 @app.post("/ask/stream", summary="流式问答（SSE）")
 def ask_stream(req: AskRequest) -> StreamingResponse:
+    consume_generation_budget()
     index, sources = get_index()
     raw = retrieve(req.question, index, top_k=req.top_k)
 

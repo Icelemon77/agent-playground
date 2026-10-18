@@ -4,14 +4,14 @@
 
 包含两种 Agent 范式（原生 Function Calling / 文本式 ReAct）、工具注册表、
 SSE 流式解析、上下文压缩、asyncio 并发执行与失败隔离、**知识库检索（RAG）**，
-以及 **76 个零 API 成本的单元测试**。
+以及 **85 个零 API 成本的单元测试**。
 
 | 实测结果 | 数据 |
 |---|---|
 | 上下文压缩 | 输入 token **−42%**（2175 → 1253）、总成本 **−28%**，信息覆盖 5/5 零丢失 |
 | 批量并发 | 5 个任务耗时 **8.25s → 2.02s（4.1x）**，token 消耗差异 <1% |
 | RAG 检索 | 按 Markdown 结构切块后，recall@3 **0.81 → 0.94**、端到端 **0.80 → 0.93** |
-| 测试 | **76 个**用例，**不需要 API key、不产生费用**（裸跑约 0.6 秒，带覆盖率约 1.3 秒） |
+| 测试 | **85 个**用例，**不需要 API key、不产生费用**（裸跑约 0.6 秒，带覆盖率约 1.4 秒） |
 
 ## 这个项目做了什么
 
@@ -380,7 +380,8 @@ tests/
 ├── test_context.py    上下文压缩（含回归用例）
 ├── test_cost.py       成本估算
 ├── test_llm_client.py LLM 客户端（mock，不花 API 费用）
-└── test_agent.py      Agent 主循环
+├── test_agent.py      Agent 主循环
+└── test_api.py        HTTP 接口（探针测试，不联网）
 ```
 
 ## 实现说明
@@ -508,7 +509,7 @@ uv run python -m agent_playground.batch 5
    `client=None` 这类参数存在的唯一目的就是「可测试」——测不了的时间，等于没测。
 
 5. **压测用真 API，回归用假 client**。性能数字必须来自真实调用（否则不算数），
-   但每次改代码都打真 API 既慢又费钱，所以 76 个回归测试全部走假 client。
+但每次改代码都打真 API 既慢又费钱，所以 85 个回归测试全部走假 client。
 
 ## 已知限制
 
@@ -522,7 +523,7 @@ uv run python -m agent_playground.batch 5
 - **评测集只有 30 条，1 道题 = 3.3 个百分点**，识别不了小幅波动；
   要定阈值一类的参数，样本量得再上一个数量级
 - `rag.py` / `eval_set.py` / `eval_rag.py` **还没有单元测试**，
-  所以整体覆盖率从 40% 降到 28%——这是新增模块的缺口，不是原有代码退化
+所以整体覆盖率从 40% 降到 36%——这是新增模块的缺口，不是原有代码退化
 - 测试只覆盖了纯逻辑（工具、压缩、成本）和 Agent 主循环，
   `stream_chat` / `batch.py` / `cli.py` 这类入口尚未覆盖
 - `stream_chat` 内部自建 HTTP client，无法注入假对象——需要先重构才能测
@@ -533,7 +534,7 @@ uv run python -m agent_playground.batch 5
 uv run ruff format .    # 格式化
 uv run ruff check .     # 静态检查
 uv run pyright          # 类型检查
-uv run pytest           # 单元测试（76 个，约 0.6 秒）
+uv run pytest           # 单元测试（85 个，约 0.6 秒）
 ```
 
 测试全部使用假 client（见 `tests/conftest.py`），**不需要 API key、不产生任何费用**，
@@ -543,9 +544,10 @@ uv run pytest           # 单元测试（76 个，约 0.6 秒）
 uv run pytest --cov=src/agent_playground --cov-report=term-missing
 ```
 
-当前语句覆盖率 28%（1196 条语句，未覆盖 859 条）。未覆盖的部分集中在
-`rag.py` / `eval_set.py` / `eval_rag.py` 这三个新模块，以及
-`react_agent.py` / `batch.py` / `cli.py` 这些入口脚本上——是已知缺口，不是遗漏。
+当前语句覆盖率 36%（1315 条语句，未覆盖 839 条）。`api.py` 有 95%（它的 9 个测试
+全部用探针，不联网、不花钱）；未覆盖的部分集中在 `rag.py` / `eval_set.py` /
+`eval_rag.py` 这三个新模块，以及 `react_agent.py` / `batch.py` / `cli.py`
+这些入口脚本上——是已知缺口，不是遗漏。
 
 RAG 这部分的验证换了一种方式：**先建评测集**（而不是写单测），
 用 30 条问答对测召回和端到端准确率。评测集自己也有质量门禁：

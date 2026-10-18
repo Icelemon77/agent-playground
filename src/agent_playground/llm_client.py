@@ -11,6 +11,7 @@ from rich.console import Console
 
 from agent_playground.config import Settings
 from agent_playground.errors import LLMCallError
+from collections.abc import Callable
 
 console = Console()
 
@@ -53,6 +54,7 @@ def stream_chat(
     *,
     tools: list[dict] | None = None,
     show_reasoning: bool = False,
+    on_chunk: Callable[[str],None] | None=None,
 ) -> dict:
     """流式调用 chat/completions，边收边打印，返回本次调用的统计信息。"""
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
@@ -114,7 +116,11 @@ def stream_chat(
                     if answer_first_at is None:
                         answer_first_at = time.perf_counter()
                     answer_parts.append(piece)
-                    console.print(piece, end="")
+                    if on_chunk is not None:
+                        on_chunk(piece)
+                    else:
+                        console.print(piece, end="")
+
                 # 累积流式工具调用碎片：按 index 分组，arguments 是字符串拼接
                 for tc in delta.get("tool_calls") or []:
                     idx = tc["index"]
@@ -140,6 +146,7 @@ def stream_chat(
         "answer_ttft": (answer_first_at - started) if answer_first_at else 0.0,
         "elapsed": elapsed,
     }
+
 
 
 async def achat(

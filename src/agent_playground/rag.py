@@ -17,7 +17,7 @@ from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
 from typing import Self
-
+from collections.abc import Callable
 from agent_playground.config import Settings
 from agent_playground.llm_client import stream_chat
 
@@ -356,6 +356,8 @@ def generate(
     question: str,
     hits: list[tuple[float, int, str]],
     settings: Settings,
+    *,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> dict:
     """生成阶段：把检索结果拼进 prompt 交给模型——这一步才花钱。"""
     if not hits:
@@ -365,7 +367,8 @@ def generate(
             "elapsed": 0.0,
         }
     result = stream_chat(
-        [{"role": "user", "content": build_prompt(question, hits)}], settings
+        [{"role": "user", "content": build_prompt(question, hits)}], settings,
+        on_chunk=on_chunk,
     )
     return {
         "answer": result["answer"],

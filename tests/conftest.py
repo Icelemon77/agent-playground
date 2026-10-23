@@ -7,6 +7,7 @@
 from typing import Any
 
 import httpx
+import pytest
 
 
 def http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -109,3 +110,20 @@ def tool_call_response(
         ],
         "usage": {"prompt_tokens": 200, "completion_tokens": 30},
     }
+
+class AlwaysTimeoutClient:
+    """模拟「每次调用都超时」的客户端。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, *args: object, **kwargs: object) -> None:
+        self.calls += 1
+        raise TimeoutError("simulated timeout")
+
+    async def aclose(self) -> None:
+        pass
+
+@pytest.fixture(autouse=True)
+def fake_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "test-key")

@@ -6,10 +6,16 @@
 
 import httpx
 import pytest
-from conftest import FakeAsyncClient, text_response, tool_call_response
+from conftest import (
+    AlwaysTimeoutClient,
+    FakeAsyncClient,
+    text_response,
+    tool_call_response,
+)
 
 from agent_playground.config import Settings
-from agent_playground.llm_client import achat, achat_with_retry
+from agent_playground.errors import LLMCallError
+from agent_playground.llm_client import achat, achat_with_retry, estimate_tokens
 
 
 async def test_achat_returns_answer() -> None:
@@ -135,7 +141,7 @@ async def test_retry_exhausts_and_raises() -> None:
     """★ 一直失败时，重试次数用尽后抛异常。"""
     client = FakeAsyncClient([500, 500, 500])
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(LLMCallError):
         await achat_with_retry(
             [{"role": "user", "content": "x"}],
             Settings(),
@@ -145,3 +151,48 @@ async def test_retry_exhausts_and_raises() -> None:
         )
 
     assert len(client.calls) == 3
+
+
+
+async def test_retry_wraps_timeout_into_llm_call_error() -> None:
+    client = AlwaysTimeoutClient()
+
+    with pytest.raises(LLMCallError):
+        await achat_with_retry(
+            [{"role": "user", "content": "x"}],
+            Settings(),
+            client=client,
+            max_attempts=3,
+            base_backoff=0.0,
+        )
+    assert client.calls == 3
+
+async def test_retry_backoff_has_jitter(monkeypatch) -> None:
+    waits: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr("agent_playground.llm_client.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("agent_playground.llm_client.random.uniform", lambda a, b: b / 2)
+
+    client = FakeAsyncClient([500, 500, 500])
+    with pytest.raises(LLMCallError):
+        await achat_with_retry(
+            [{"role": "user", "content": "x"}],
+            Settings(),
+            client=client,
+            max_attempts=3,
+            base_backoff=1.0,
+        )
+
+    assert waits == [1.25, 2.5]
+
+
+
+
+def test_estimate_tokens_counts_cjk_and_ascii() -> None:
+    assert estimate_tokens("") == 0
+    assert estimate_tokens("你好世界") == 2
+    assert estimate_tokens("abcdefgh") == 2
+    assert estimate_tokens("你好abcd") == 2

@@ -1,8 +1,8 @@
 """LLM 客户端：流式调用大模型接口，返回回答、思考、用量与耗时。"""
-
 import asyncio
 import json
 import logging
+import random
 import time
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -79,7 +79,7 @@ def stream_chat(
     tool_calls_acc: dict[int, dict[str, str]] = {}
 
     with (
-        httpx.Client(timeout=settings.request_timeout) as client,
+        httpx.Client(timeout=build_timeout(settings)) as client,
         client.stream("POST", url, json=payload, headers=headers) as resp,
     ):
         if resp.status_code != 200:
@@ -173,7 +173,7 @@ async def achat(
 
     owns_client = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=settings.request_timeout)
+        client = httpx.AsyncClient(timeout=build_timeout(settings))
 
     try:
         resp = await client.post(url, json=payload, headers=headers)
@@ -239,6 +239,7 @@ async def achat_with_retry(
 
         if attempt < max_attempts:
             wait = base_backoff * 2 ** (attempt - 1)  # 指数退避 0.5s → 1s → 2s
+            wait += random.uniform(0, wait * 0.5)
             logger.warning(
                 "llm_retry attempt=%d/%d wait=%.1fs error=%s",
                 attempt,
@@ -249,4 +250,24 @@ async def achat_with_retry(
             await asyncio.sleep(wait)
 
     logger.error("llm_retry_exhausted attempts=%d error=%s", max_attempts, last_error)
-    raise last_error if last_error else RuntimeError("重试全部失败")
+    message = f"重试 {max_attempts} 次仍失败：{type(last_error).__name__}"
+    raise LLMCallError(message) from last_error
+
+def build_timeout(settings: Settings) -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=settings.connect_timeout,
+        read=settings.read_timeout,
+        write=settings.connect_timeout,
+        pool=settings.connect_timeout,
+    )
+
+def test_timeout_is_split_by_stage() -> None:
+    timeout = build_timeout(Settings(connect_timeout=3, read_timeout=45))
+    assert timeout.connect == 3
+    assert timeout.read == 45
+
+def estimate_tokens(text: str) -> int:
+    """中文按 2 字符 ≈ 1 token，英文按 4 字符 ≈ 1 token，粗估即可。"""
+    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    other = len(text) - cjk
+    return cjk // 2 + other // 4

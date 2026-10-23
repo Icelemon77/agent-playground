@@ -3,10 +3,14 @@
 用假 client 模拟「模型先要工具、再给答案」的完整过程。
 重点验证 Day 3 踩过的坑：工具结果必须以 role=tool + tool_call_id 回传。
 """
-
 from typing import Any
 
-from conftest import FakeAsyncClient, text_response, tool_call_response
+from conftest import (
+    AlwaysTimeoutClient,
+    FakeAsyncClient,
+    text_response,
+    tool_call_response,
+)
 
 from agent_playground.agent import MAX_STEPS, arun_agent
 from agent_playground.config import Settings
@@ -126,4 +130,46 @@ async def test_agent_catches_http_error() -> None:
 
     assert result["error"] == "HTTPStatusError"
     assert result["steps"] == 0
-    assert "网络错误" in result["answer"]
+    assert "暂时不可用" in result["answer"]
+
+async def test_arun_agent_degrades_on_timeout(monkeypatch) -> None:
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("agent_playground.llm_client.asyncio.sleep", no_sleep)
+    result = await arun_agent("hi", Settings(), client=AlwaysTimeoutClient())
+
+    assert result["error"] == "LLMCallError"
+    assert "暂时不可用" in result["answer"]
+
+async def test_error_preserves_steps_and_tokens(monkeypatch) -> None:
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("agent_playground.llm_client.asyncio.sleep", no_sleep)
+
+    client = FakeAsyncClient(
+        [
+            tool_call_response("calculator", '{"expression": "1+1"}'),
+            500, 500, 500,
+        ]
+    )
+    result = await arun_agent("2+2 等于几", Settings(), client=client)
+
+    assert result["error"] == "LLMCallError"
+    assert result["steps"] == 1                  # 第 1 步完成，第 2 步失败
+    assert result["prompt_tokens"] == 200        # 第 1 步花掉的 token 保留
+    assert "LLMCallError" not in result["answer"]  # 类名不泄露给用户
+
+async def test_agent_rejects_prompt_over_budget() -> None:
+    client = FakeAsyncClient([])                    # 空脚本：一旦被调用就报错
+
+    result = await arun_agent(
+        "长" * 20_000,
+        Settings(max_prompt_tokens=100),
+        client=client,
+    )
+
+    assert result["error"] == "PromptTooLong"
+    assert result["prompt_tokens"] == 0
+    assert client.calls == []

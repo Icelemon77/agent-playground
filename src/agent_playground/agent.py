@@ -13,7 +13,13 @@ import httpx
 
 from agent_playground.config import Settings
 from agent_playground.context import compact_observation
-from agent_playground.llm_client import ChatClient, achat_with_retry, stream_chat
+from agent_playground.errors import LLMCallError
+from agent_playground.llm_client import (
+    ChatClient,
+    achat_with_retry,
+    estimate_tokens,
+    stream_chat,
+)
 from agent_playground.logging_config import setup_logging
 from agent_playground.prompts import TOOL_PROMPT
 from agent_playground.tools import adispatch, dispatch, get_tool_schemas
@@ -106,7 +112,11 @@ def main() -> int:
     setup_logging(settings.log_level)
     question = sys.argv[1] if len(sys.argv) > 1 else "3 的 15 次方是多少？"
     print(f"问题：{question}")
-    run_agent(question, settings)  # 内容已经在流式过程中打印过了
+    try:
+        run_agent(question, settings)
+    except (httpx.HTTPError, TimeoutError, LLMCallError) as exc:
+        print(f"\n[错误] 服务暂时不可用（{type(exc).__name__}），请稍后重试。")
+        return 1
     print()  # 只补一个结尾换行
     return 0
 
@@ -128,7 +138,18 @@ async def arun_agent(
     total_prompt = 0
     total_completion = 0
     started = time.perf_counter()
+    steps_done = 0
     try:
+        estimated = sum(estimate_tokens(m.get("content") or "") for m in messages)
+        if estimated > settings.max_prompt_tokens:
+            return {
+                "answer": "（这次请求的上下文太长，请清空历史或缩短问题）",
+                "error": "PromptTooLong",
+                "steps": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "elapsed_s": time.perf_counter() - started,
+            }
         for step in range(1, MAX_STEPS + 1):
             result = await achat_with_retry(
                 messages, settings, tools=get_tool_schemas(), client=client
@@ -139,6 +160,8 @@ async def arun_agent(
             total_completion += usage.get("completion_tokens", 0)
 
             calls = result["tool_calls"]
+
+
 
             if not calls:
                 return {
@@ -187,6 +210,7 @@ async def arun_agent(
                         "content": compact_observation(observation),
                     }
                 )
+            steps_done = step
 
         return {
             "answer": f"达到最大步数 {MAX_STEPS}，任务未完成",
@@ -196,7 +220,7 @@ async def arun_agent(
             "completion_tokens": total_completion,
             "elapsed_s": time.perf_counter() - started,
         }
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, TimeoutError, LLMCallError) as exc:
         logger.warning(
             "agent_http_error input=%s error=%s: %s",
             user_input[:40],
@@ -204,9 +228,9 @@ async def arun_agent(
             str(exc)[:120],
         )
         return {
-            "answer": f"（网络错误，任务未能完成：{type(exc).__name__}）",
+            "answer": "（服务暂时不可用，任务未能完成）",
             "error": type(exc).__name__,
-            "steps": 0,
+            "steps": steps_done,
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,
             "elapsed_s": time.perf_counter() - started,

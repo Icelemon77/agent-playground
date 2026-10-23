@@ -16,3 +16,6 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.openai.com/v1"
     request_timeout: float = Field(default=30.0, gt=0, le=300)
+    connect_timeout: float = Field(default=5.0, gt=0, le=60)
+    read_timeout: float = Field(default=60.0, gt=0, le=300)
+    max_prompt_tokens: int = Field(default=6000, gt=0)

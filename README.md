@@ -4,14 +4,14 @@
 
 包含两种 Agent 范式（原生 Function Calling / 文本式 ReAct）、工具注册表、
 SSE 流式解析、上下文压缩、asyncio 并发执行与失败隔离、**知识库检索（RAG）**、
-**跨会话长期记忆（SQLite）**，以及 **87 个零 API 成本的单元测试**。
+**跨会话长期记忆（SQLite）**，以及 **95 个零 API 成本的单元测试**。
 
 | 实测结果 | 数据 |
 |---|---|
 | 上下文压缩 | 输入 token **−42%**（2175 → 1253）、总成本 **−28%**，信息覆盖 5/5 零丢失 |
 | 批量并发 | 5 个任务耗时 **8.25s → 2.02s（4.1x）**，token 消耗差异 <1% |
 | RAG 检索 | 按 Markdown 结构切块后，recall@3 **0.81 → 0.94**、端到端 **0.80 → 0.93** |
-| 测试 | **87 个**用例，**不需要 API key、不产生费用**（裸跑约 0.6 秒，带覆盖率约 1.4 秒） |
+| 测试 | **95 个**用例，**不需要 API key、不产生费用**（裸跑约 0.6 秒，带覆盖率约 1.4 秒） |
 
 **在线演示**：<https://agent-playground-xc28.onrender.com> —— 免费层会休眠，首次打开约需 50 秒
 
@@ -52,7 +52,7 @@ flowchart TD
     K --> M
 ```
 
-五个我认为有难度的点：
+六个我认为有难度的点：
 
 1. **工具并发**：同步工具必须用 `asyncio.to_thread` 包装，否则会阻塞事件循环——
    漏掉包装时并发会**静默失效**（实测 1.00s 退化成 3.00s，不报任何错）
@@ -65,6 +65,9 @@ flowchart TD
 5. **记忆的评测**：同一套召回算法，只把记忆措辞规范化，recall@3 从 0.67 升到 1.00；
    而把最低重叠数从 1 提到 2，误召回从 0.50 降到 0，recall 却掉到 0.67。
    **写入质量与阈值是两个独立变量，混在一起调只会得出错误结论。**
+6. **可靠性**：`asyncio.wait_for` 抛的是内置 `TimeoutError`，不是 `httpx.HTTPError`，
+   原来的 `except` 根本接不住——接口整体不可达时用户看到的是崩栈。这个问题靠读代码很容易漏，
+   是用「假 client 每次都超时」的故障注入测试抓出来的。
 
 ## 实测数据
 
@@ -214,6 +217,29 @@ flowchart TD
 两条结论：**写入记忆时的措辞，和召回算法一样重要**（只改措辞，recall 0.67 → 1.00）；
 **调高阈值只是在精度和召回之间换位置**，无法区分“找实习”和“实习证明”这种字面重合、语义无关的问题。
 细节与 2×2 实验见 [`docs/memory_notes.md`](docs/memory_notes.md)。
+
+### 9. 可靠性：超时不再崩栈；路由实测反而更贵
+
+**故障注入发现了一个真 bug。** `achat_with_retry` 用 `asyncio.wait_for` 做超时，
+Python 3.11+ 抛的是内置 `TimeoutError`；而 `arun_agent` 只捕获 `httpx.HTTPError`，
+两者没有继承关系——三次重试全部超时后，异常直接穿透，用户看到的是 Python 堆栈。
+
+修复后：重试耗尽统一包装成 `LLMCallError` 并保留 `__cause__`；Agent 层返回结构化结果，
+`answer` 给人话、`error` 给类名、`steps` 与 token 保留真实值。另外加了 0~50% 的重试抖动，
+以及 connect / read 分层超时（5s / 60s）。
+
+**成本实验**：6 个任务（3 简单 + 3 复杂）× 2 个模型，实际 API 调用：
+
+| 策略 | 成功率 | 总成本 | 平均延迟 |
+|---|---|---|---|
+| 全 flash | **6/6** | **¥0.015875** | **4.74s** |
+| 全 pro | 6/6 | ¥0.051697 | 8.80s |
+| 路由（按复杂度） | 6/6 | ¥0.050752 | 8.61s |
+| 事后最优 | 6/6 | ¥0.015875 | 4.74s |
+
+结论：**“复杂问题”不等于“需要更强模型”**。flash 六题全对，路由把三道复杂题送去 pro，
+成本变成 3.2 倍、成功率没有提升。下一步改成**级联**——先 flash，结果校验不过再升级，
+成本上界等于全 flash。细节见 [`docs/reliability_notes.md`](docs/reliability_notes.md)。
 
 ## 环境要求
 
@@ -408,6 +434,7 @@ src/agent_playground/
 ├── memory.py          长期记忆：SQLite 存储 + bigram 召回 + 使用计数
 ├── tools.py           工具注册表：@tool 装饰器 + 同步/异步分发
 ├── llm_client.py      LLM 客户端：同步流式 + 异步 achat + 重试
+├── model_router.py    模型路由：按问题复杂度选择 flash / pro
 ├── agent.py           Agent 主循环：同步流式 + 异步并发（arun_agent）
 ├── react_agent.py     文本式 ReAct Agent（另一条实现路线）
 ├── trace.py           每次运行的独立记录
@@ -555,7 +582,7 @@ uv run python -m agent_playground.batch 5
    `client=None` 这类参数存在的唯一目的就是「可测试」——测不了的时间，等于没测。
 
 5. **压测用真 API，回归用假 client**。性能数字必须来自真实调用（否则不算数），
-但每次改代码都打真 API 既慢又费钱，所以 87 个回归测试全部走假 client。
+但每次改代码都打真 API 既慢又费钱，所以 95 个回归测试全部走假 client。
 
 ## 已知限制
 
@@ -567,6 +594,10 @@ uv run python -m agent_playground.batch 5
   （实测 recall@3 = 1.00 的同时误召回率 = 0.50）。要真正解决需要 embedding 召回
 - 记忆没有 TTL 与自动淘汰，也不合并冲突事实——目前只靠 prompt 约束「以用户本轮为准」，
   旧记忆仍留在库里，下次启动还会被召回
+- **没有熔断器**：连续失败时仍会按完整重试次数打满，没有「快速失败」窗口
+- token 预算守卫是字符粗估（中文 2 字符 ≈ 1 token），不是 tokenizer 精确计数
+- 模型路由是关键词启发式，且实测在 6 题样本上**没有收益**（flash 全对，pro 贵 3.2 倍），
+  默认仍是 `deepseek-flash`；下一步改成「先 flash、校验失败再升级」的级联
 - **RAG 用的是 TF-IDF 稀疏向量**：同义词匹配不到（搜「报错」找不到写「异常」的段落）。
   服务商没有 embedding 接口，换稠密向量需要另一个 key——代码里已留好替换点
   （`TfidfIndex._vectorize` 一个方法）
@@ -584,7 +615,7 @@ uv run python -m agent_playground.batch 5
 uv run ruff format .    # 格式化
 uv run ruff check .     # 静态检查
 uv run pyright          # 类型检查
-uv run pytest           # 单元测试（87 个，约 0.6 秒）
+uv run pytest           # 单元测试（95 个，约 0.6 秒）
 ```
 
 测试全部使用假 client（见 `tests/conftest.py`），**不需要 API key、不产生任何费用**，

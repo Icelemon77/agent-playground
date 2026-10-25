@@ -95,12 +95,30 @@ def extract_sql(text: str) -> str:
     return candidate
 
 
-async def generate_sql(question: str, settings: Settings) -> str:
-    """调用模型生成 SQL，失败时抛 LLMCallError。"""
+async def generate_sql(
+    question: str,
+    settings: Settings,
+    *,
+    previous_sql: str | None = None,
+    error: str | None = None,
+) -> str:
+    """调用模型生成 SQL；传了 previous_sql 时是「修复模式」。"""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question},
     ]
+    if previous_sql is not None:
+        messages += [
+            {"role": "assistant", "content": previous_sql},
+            {
+                "role": "user",
+                "content": (
+                    f"上一条 SQL 执行失败：{error}\n"
+                    "请修正后重新输出一条 SQL，只输出 SQL 本身。"
+                ),
+            },
+        ]
+
     result = await achat_with_retry(messages, settings)
     return extract_sql(result["answer"])
 def validate_sql(sql: str) -> str:
@@ -146,7 +164,7 @@ def execute_sql(sql: str) -> dict[str, Any]:
         conn.close()
 
 async def ask(question: str, settings: Settings) -> dict[str, Any]:
-    """端到端：生成 → 校验 → 执行，所有失败都走返回值。"""
+    """端到端：生成 → 校验 → 执行；SQL 执行失败时自修复一次。"""
     started = time.perf_counter()
     result: dict[str, Any] = {
         "question": question,
@@ -156,45 +174,57 @@ async def ask(question: str, settings: Settings) -> dict[str, Any]:
         "truncated": False,
         "error": None,
         "detail": None,
+        "repairs": 0,
         "elapsed_s": 0.0,
     }
 
+    def finish(**extra: Any) -> dict[str, Any]:
+        result.update(extra)
+        result["elapsed_s"] = time.perf_counter() - started
+        return result
+
     try:
-        raw_sql = await generate_sql(question, settings)
+        sql_text = await generate_sql(question, settings)
     except (LLMCallError, httpx.HTTPError, TimeoutError) as exc:
-        result["error"] = type(exc).__name__
-        result["detail"] = str(exc)
-        result["elapsed_s"] = time.perf_counter() - started
-        return result
+        return finish(error=type(exc).__name__, detail=str(exc))
     except ValueError as exc:
-        result["error"] = "NoSQL"
-        result["detail"] = str(exc)
-        result["elapsed_s"] = time.perf_counter() - started
-        return result
+        return finish(error="NoSQL", detail=str(exc))
 
-    result["sql"] = raw_sql
+    for attempt in (1, 2):
+        result["sql"] = sql_text
 
-    try:
-        sql = validate_sql(raw_sql)
-    except ValueError as exc:
-        result["error"] = "UnsafeSQL"
-        result["detail"] = str(exc)
-        result["elapsed_s"] = time.perf_counter() - started
-        return result
+        try:
+            sql = validate_sql(sql_text)
+        except ValueError as exc:
+            # 安全拒绝是终态，绝不自修复
+            return finish(error="UnsafeSQL", detail=str(exc))
 
-    try:
-        data = execute_sql(sql)
-    except sqlite3.Error as exc:
-        result["error"] = "SQLError"
-        result["detail"] = str(exc)
-        result["elapsed_s"] = time.perf_counter() - started
-        return result
+        try:
+            data = execute_sql(sql)
+        except sqlite3.Error as exc:
+            if attempt == 2:
+                return finish(
+                    error="SQLError", detail=f"{exc}（已自修复 1 次仍失败）"
+                )
 
-    result.update(data)
-    result["sql"] = sql
-    result["elapsed_s"] = time.perf_counter() - started
-    return result
+            result["repairs"] = 1
+            try:
+                sql_text = await generate_sql(
+                    question, settings, previous_sql=sql, error=str(exc)
+                )
+            except (LLMCallError, httpx.HTTPError, TimeoutError) as repair_exc:
+                return finish(
+                    error=type(repair_exc).__name__, detail=str(repair_exc)
+                )
+            except ValueError as repair_exc:
+                return finish(error="NoSQL", detail=f"自修复失败：{repair_exc}")
+            continue
 
+        result.update(data)
+        result["sql"] = sql
+        return finish()
+
+    return finish(error="SQLError", detail="自修复流程异常结束")
 
 def main() -> int:
     question = sys.argv[1] if len(sys.argv) > 1 else "一共有多少客户？"

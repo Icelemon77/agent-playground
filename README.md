@@ -28,6 +28,7 @@ SSE 流式解析、上下文压缩、asyncio 并发执行与失败隔离、**知
 - **Agent 层** `agent.py` / `react_agent.py`：主循环、上下文压缩、并发工具执行、trace 记录
 - **检索层** `rag.py`：文档切块、TF-IDF 稀疏向量、余弦相似度检索，把结果拼进 prompt
 - **记忆层** `memory.py`：SQLite 持久化事实，字符 bigram 召回后注入 system prompt
+- **SQL 分析层** `sql_agent.py`：自然语言转 SQL，安全校验后只读执行，失败可自修复一次
 - **观测层** `logging_config.py` / `cost.py` / `trace.py` / `replay.py`：结构化日志、成本估算、过程可回放
 - **评测层** `eval_set.py` / `eval_rag.py`：30 条评测集，召回 / 拒答 / 端到端三层指标
 
@@ -241,6 +242,79 @@ Python 3.11+ 抛的是内置 `TimeoutError`；而 `arun_agent` 只捕获 `httpx.
 成本变成 3.2 倍、成功率没有提升。下一步改成**级联**——先 flash，结果校验不过再升级，
 成本上界等于全 flash。细节见 [`docs/reliability_notes.md`](docs/reliability_notes.md)。
 
+## SQL 数据分析 Agent
+
+**一句话**：自然语言进，模型生成 SQL，经过安全校验后在只读连接上执行，返回结果。
+
+```
+问题 ──▶ 生成 SQL ──▶ 校验（5 条规则）──▶ 只读执行 ──▶ 结果
+             │                │                  │
+             └ NoSQL          └ UnsafeSQL        └ SQLError ──▶ 自修复一次
+```
+
+### 快速开始
+
+```powershell
+uv run python scripts/make_sales_db.py
+uv run python -m agent_playground.sql_agent "一共有多少客户？"
+uv run pytest -q
+```
+
+演示库由 `scripts/make_sales_db.py` 用 `random.seed(42)` 生成，
+内容指纹 `124e31737cfceb3d`（`scripts/db_fingerprint.py` 计算）。
+数据库本身不进 Git，任何人 clone 后跑第一条命令即可重建。
+
+### 评测：10/10
+
+10 条自然语言问题，金标准以 **SQL** 形式保存，期望值在评测时现算，不存死数字：
+
+| # | 问题 | 结果 |
+|---|---|---|
+| 1 | 一共有多少客户？ | 30 |
+| 2 | 已支付订单中销售额最高的产品？ | 机械键盘 |
+| 3 | 每个城市各有多少客户？ | 5 个城市 |
+| 4 | 2026 年 9 月订单数？ | 47 |
+| 5 | 取消率最高的产品？（并列取订单多者） | 机械键盘 |
+| 6 | 客单价最高的城市？ | 广州 277.7143 |
+| 7 | 哪个品类卖出数量最多？ | 图书 |
+| 8 | 2026 年 9 月新增客户？ | 5 |
+| 9 | 下单两次及以上的客户数？ | 29 |
+| 10 | 退款订单金额合计？ | 5174.0 |
+
+评测过程中修掉了三类「看起来是模型错、其实是评测设计」的问题：
+
+- **口径歧义**：「销售额」是否包含退款 → 问题写明「已支付订单中」；
+- **输出形状**：问题问「哪个」，金标准却多返回一列数值 → 问题写明「只给出名称」；
+- **并列不确定**：两个产品取消率同为 0.25，`LIMIT 1` 没有 tie-break →
+  问题写明「并列取订单总数较多的」，金标准追加 `COUNT(*) DESC, p.id ASC`。
+
+第 6 题曾稳定因为漏写 `JOIN products` 报 `no such column`。修复方式是把
+**失败的 SQL 与数据库报错原文**回传模型、重新生成一次；修复后的 SQL 必须重新走校验与执行。
+`UnsafeSQL` 是终态，绝不自修复。返回结果里的 `repairs` 字段记录是否触发过修复。
+
+### 安全
+
+| 攻击 | 结果 |
+|---|---|
+| `DELETE FROM orders` | 拒绝：只允许 SELECT / WITH |
+| `UPDATE orders SET ...` | 拒绝：只允许 SELECT / WITH |
+| `SELECT 1; DROP TABLE orders` | 拒绝：不允许多条语句 |
+| `SELECT * FROM orders -- ...` | 拒绝：不允许 SQL 注释 |
+| `PRAGMA table_info(orders)` | 拒绝：只允许 SELECT / WITH |
+
+三层保护缺一不可：prompt 约束、SQL 校验（单条 SELECT、禁注释、禁写关键字）、
+执行层双保险（`mode=ro` 文件只读 + `PRAGMA query_only` 连接只读）。
+攻击前后 `orders` 都是 120 行——不是「没报错」，而是数据真的没变。
+
+### 已知限制
+
+- 没有查询执行超时，重量级查询可能拖住进程；
+- 只支持单轮问答，没有追问与上下文；
+- 关键词黑名单基于文本匹配，字段名含 `delete` 之类会误伤；
+- 评测按整行精确比对，列顺序或多余列会被判为失败（靠问题写清形状规避）。
+
+设计与评测细节见 [`docs/sql_agent_notes.md`](docs/sql_agent_notes.md)。
+
 ## 环境要求
 
 - Python 3.12+
@@ -442,6 +516,7 @@ src/agent_playground/
 ├── batch.py           批量并发任务
 ├── eval_set.py        评测集加载与质量门禁（校验评测集本身是否可靠）
 ├── eval_rag.py        RAG 评测：召回 / 无答案拒答 / 端到端三层指标
+├── sql_agent.py       只读 SQL 分析 Agent：生成 / 校验 / 只读执行 / 自修复
 ├── api.py             HTTP 接口：/health、/search、/ask、/ask/stream
 ├── cli.py             交互式命令行对话
 └── main.py            启动链路自检入口
@@ -454,7 +529,12 @@ tests/
 ├── test_cost.py       成本估算
 ├── test_llm_client.py LLM 客户端（mock，不花 API 费用）
 ├── test_agent.py      Agent 主循环
-└── test_api.py        HTTP 接口（探针测试，不联网）
+├── test_api.py        HTTP 接口（探针测试，不联网）
+└── test_sql_agent.py  SQL 抽取、安全校验与自修复
+
+scripts/
+├── make_sales_db.py   生成 SQL Agent 演示库（seed=42，可复现）
+└── db_fingerprint.py  数据集内容指纹（用于评测前核对）
 ```
 
 ## 实现说明

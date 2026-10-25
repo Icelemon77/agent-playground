@@ -264,6 +264,10 @@ uv run pytest -q
 内容指纹 `124e31737cfceb3d`（`scripts/db_fingerprint.py` 计算）。
 数据库本身不进 Git，任何人 clone 后跑第一条命令即可重建。
 
+### 实际输出
+
+![SQL Agent 实际输出](docs/sql-agent-demo.png)
+
 ### 评测：10/10
 
 10 条自然语言问题，金标准以 **SQL** 形式保存，期望值在评测时现算，不存死数字：
@@ -280,6 +284,8 @@ uv run pytest -q
 | 8 | 2026 年 9 月新增客户？ | 5 |
 | 9 | 下单两次及以上的客户数？ | 29 |
 | 10 | 退款订单金额合计？ | 5174.0 |
+
+![108 个测试全部通过](docs/sql-agent-tests.png)
 
 评测过程中修掉了三类「看起来是模型错、其实是评测设计」的问题：
 
@@ -305,6 +311,8 @@ uv run pytest -q
 三层保护缺一不可：prompt 约束、SQL 校验（单条 SELECT、禁注释、禁写关键字）、
 执行层双保险（`mode=ro` 文件只读 + `PRAGMA query_only` 连接只读）。
 攻击前后 `orders` 都是 120 行——不是「没报错」，而是数据真的没变。
+
+![删除请求被拒绝，没有生成任何 SQL](docs/sql-agent-guard.png)
 
 ### 已知限制
 
